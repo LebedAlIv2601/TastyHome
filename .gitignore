@@ -1,0 +1,28 @@
+*.iml
+.kotlin
+.gradle
+**/build/
+!src/**/build/
+local.properties
+.idea
+.DS_Store
+captures
+.externalNativeBuild
+.cxx
+
+# Xcode / iOS local user data
+xcuserdata
+**/xcuserdata/
+**/*.xcuserstate
+**/*.xcscmblueprint
+
+# Xcode SwiftPM workspace metadata (local cache/config)
+**/project.xcworkspace/xcshareddata/swiftpm/
+
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+**/xcshareddata/WorkspaceSettings.xcsettings
+node_modules/

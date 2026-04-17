@@ -1,0 +1,42 @@
+#!/bin/sh
+
+# Функция: проверяет, установлен ли указанный флаг в local.properties
+# Использование: check_local_prop_flag <flag_name>
+check_local_prop_flag() {
+  # Первый аргумент функции — имя флага, который хотим проверить
+  local flag_name=$1
+  echo "[check_local_prop_flag] Проверяем флаг: $flag_name"
+
+  # Определяем корень проекта через git
+  # git rev-parse --show-toplevel вернёт абсолютный путь к корню репозитория
+  local project_root
+  project_root=$(git rev-parse --show-toplevel 2>/dev/null)
+
+  # Если переменная пустая — это не git репозиторий, возвращаем "ложь"
+  if [ -z "$project_root" ]; then
+      echo "[check_local_prop_flag] ❌ Не git репозиторий — флаг не найден"
+      return 1
+  fi
+
+  # Формируем полный путь до файла local.properties в корне проекта
+  local file_path="$project_root/local.properties"
+
+  # Если файла нет — возвращаем "ложь"
+  if [ ! -f "$file_path" ]; then
+      echo "[check_local_prop_flag] ❌ Файл local.properties не найден"
+      return 1
+  fi
+
+  # Читаем значение флага из файла
+  local value
+  value=$(grep "^${flag_name}=" "$file_path" | cut -d'=' -f2 | tr -d ' \r')
+  # grep ищет строку, начинающуюся с flag_name=
+  # cut берёт всё после знака '='
+  # tr удаляет пробелы и символы возврата каретки (для совместимости с Windows)
+
+  echo "[check_local_prop_flag] Значение флага: '$value'"
+
+  # Сравниваем значение с "true"
+  # Если равно — код выхода функции 0 (успех), иначе 1
+  [ "$value" = "true" ]
+}

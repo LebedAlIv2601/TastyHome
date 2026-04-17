@@ -1,0 +1,28 @@
+#!/bin/sh
+# Подключаем файл с утилитами
+. "$(dirname "$0")/utils"
+
+detekt_check() {
+    # Проверяем флаг
+    if ! check_local_prop_flag "prepush.detekt"; then
+      echo "[detekt_check] ⚠️ Detekt пропущен (prepush.detekt != true)"
+      return 0
+    fi
+
+    echo "[detekt_check] Running detekt check..."
+    OUTPUT="/tmp/detekt-$(date +%s)"
+    ./gradlew detektAll > $OUTPUT
+    EXIT_CODE=$?
+    if [ $EXIT_CODE -ne 0 ]; then
+      cat $OUTPUT
+      rm $OUTPUT
+      echo "***********************************************"
+      echo "               ❌Detekt failed❌               "
+      echo " Please fix the above issues before committing "
+      echo "***********************************************"
+      return $EXIT_CODE
+    fi
+    rm $OUTPUT
+    return 0
+}
+rm $OUTPUT

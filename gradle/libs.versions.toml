@@ -1,0 +1,159 @@
+[versions]
+# project versions (DONT DELETE)
+
+android-minSdk = "28"
+android-targetSdk = "36"
+android-compileSdk = "36"
+android-appVersionCode = "1"
+majorVersion = "1"
+minorVersion = "0"
+hotfixVersion = "0"
+javaVersion = "21"
+minIos = "16"
+
+# librarues versions
+
+agp = "9.0.1"
+androidx-activity = "1.13.0"
+androidx-lifecycle = "2.10.0"
+composeMultiplatform = "1.10.3"
+kotlin = "2.3.20"
+material3 = "1.9.0"
+decompose = "3.5.0"
+essenty = "2.5.0"
+metro = "0.13.2"
+coil = "3.4.0"
+ktor = "3.4.2"
+coroutines = "1.10.2"
+kotlinSerialization = "1.11.0"
+kermit = "2.1.0"
+detekt = "1.23.8"
+kotlinx-datetime = "0.7.1"
+datastore = "1.2.1"
+room = "2.8.4"
+sqlite = "2.6.2"
+spmForKmp = "1.7.0"
+kotlinKsp = "2.3.6"
+###################################################
+##################### android #####################
+###################################################
+androidx-ktx-core = "1.18.0"
+kotlinx-io = "0.9.0"
+phoenix = "3.0.0"
+
+[libraries]
+
+# gradle plugins
+gradlePlugin-android = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+gradlePlugin-androidKmp = { module = "com.android.kotlin.multiplatform.library:com.android.kotlin.multiplatform.library.gradle.plugin", version.ref = "agp" }
+gradlePlugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+gradlePlugin-detekt = { module = "io.gitlab.arturbosch.detekt:detekt-gradle-plugin", version.ref = "detekt" }
+gradlePlugin-spmForKmp = { module = "io.github.frankois944.spmForKmp:io.github.frankois944.spmForKmp.gradle.plugin", version.ref = "spmForKmp" }
+
+# coroutines
+coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+
+# kotlin
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
+kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
+
+# lifecycle
+lifecycle-viewmodelCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
+lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
+
+# compose
+compose-tooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.ref = "composeMultiplatform" }
+compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
+compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
+compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
+compose-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
+compose-preview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
+compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "material3" }
+
+# tests
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+
+# datastore
+datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+
+# decompose
+decompose-core = { module = "com.arkivanov.decompose:decompose", version.ref = "decompose" }
+decompose-compose = { module = "com.arkivanov.decompose:extensions-compose", version.ref = "decompose" }
+decompose-compose-experimental = { module = "com.arkivanov.decompose:extensions-compose-experimental", version.ref = "decompose" }
+decompose-lifecycle = { module = "com.arkivanov.essenty:lifecycle", version.ref = "essenty" }
+decompose-lifecycle-coroutines = { module = "com.arkivanov.essenty:lifecycle-coroutines", version.ref = "essenty" }
+decompose-statekeeper = { module = "com.arkivanov.essenty:state-keeper", version.ref = "essenty" }
+decompose-backhandler = { module = "com.arkivanov.essenty:back-handler", version.ref = "essenty" }
+
+# coil
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
+
+# ktor
+ktor-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-android = { module = "io.ktor:ktor-client-android", version.ref = "ktor" }
+ktor-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+ktor-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+
+# serialization
+kotlinSerialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinSerialization" }
+
+# detekt
+detekt-cli = { module = "io.gitlab.arturbosch.detekt:detekt-cli", version.ref = "detekt" }
+detekt-api = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = "detekt" }
+detekt-test = { module = "io.gitlab.arturbosch.detekt:detekt-test", version.ref = "detekt" }
+detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detekt" }
+
+# kermit
+kermit = { module = "co.touchlab:kermit", version.ref = "kermit"}
+
+# room
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+room-sqliteBundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
+room-test = { module = "androidx.room:room-testing", version.ref = "room" }
+
+###################################################
+##################### android #####################
+###################################################
+androidx-ktx-core = { module = "androidx.core:core-ktx", version.ref = "androidx-ktx-core" }
+androidx-activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "androidx-activity" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+
+# phoenix
+phoenix = { module = "com.jakewharton:process-phoenix", version.ref = "phoenix" }
+
+[plugins]
+# android
+androidApplication = { id = "com.android.application", version.ref = "agp" }
+androidLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+
+# compose
+composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+
+# kmp
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+
+# metro
+metro = { id = "dev.zacsweers.metro", version.ref = "metro" }
+
+# serialization
+kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+
+# convention
+convention-androidApp = { id = "com.something.android-app-plugin" }
+convention-baseKmp = { id = "com.something.base-kmp-plugin" }
+
+# detekt
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+
+# spm for kmp
+spmForKmp = { id = "io.github.frankois944.spmForKmp", version.ref = "spmForKmp" }
+
+# ksp
+ksp = { id = "com.google.devtools.ksp", version.ref = "kotlinKsp" }
+
+# room
+room = { id = "androidx.room", version.ref = "room" }
