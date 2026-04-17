@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		ECAC6748035CA10379E0A6C3 /* KmpProjectTemplate.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KmpProjectTemplate.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECAC6748035CA10379E0A6C3 /* TastyHome.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TastyHome.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -59,7 +59,7 @@
 		7CC8E3659F61999AE74440C7 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				ECAC6748035CA10379E0A6C3 /* KmpProjectTemplate.app */,
+				ECAC6748035CA10379E0A6C3 /* TastyHome.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -87,7 +87,7 @@
 			packageProductDependencies = (
 			);
 			productName = iosApp;
-			productReference = ECAC6748035CA10379E0A6C3 /* KmpProjectTemplate.app */;
+			productReference = ECAC6748035CA10379E0A6C3 /* TastyHome.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */

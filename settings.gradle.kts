@@ -1,4 +1,4 @@
-rootProject.name = "KmpProjectTemplate"
+rootProject.name = "TastyHome"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
