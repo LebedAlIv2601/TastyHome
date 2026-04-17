@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 # Функция: проверяет, установлен ли указанный флаг в local.properties
 # Использование: check_local_prop_flag <flag_name>

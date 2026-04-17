@@ -1,6 +1,4 @@
-#!/bin/sh
-# Подключаем файл с утилитами
-. "$(dirname "$0")/utils"
+#!/usr/bin/env bash
 
 detekt_check() {
     # Проверяем флаг
@@ -11,18 +9,17 @@ detekt_check() {
 
     echo "[detekt_check] Running detekt check..."
     OUTPUT="/tmp/detekt-$(date +%s)"
-    ./gradlew detektAll > $OUTPUT
+    ./gradlew detektAll > "$OUTPUT"
     EXIT_CODE=$?
     if [ $EXIT_CODE -ne 0 ]; then
-      cat $OUTPUT
-      rm $OUTPUT
+      cat "$OUTPUT"
+      rm -f "$OUTPUT"
       echo "***********************************************"
       echo "               ❌Detekt failed❌               "
       echo " Please fix the above issues before committing "
       echo "***********************************************"
       return $EXIT_CODE
     fi
-    rm $OUTPUT
+    rm -f "$OUTPUT"
     return 0
 }
-rm $OUTPUT

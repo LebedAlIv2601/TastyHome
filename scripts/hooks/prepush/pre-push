@@ -1,7 +1,21 @@
-#!/bin/sh
-# подключение соседних файлов с функциями
-. "$(dirname "$0")/utils"
-. "$(dirname "$0")/detekt-check"
+#!/usr/bin/env bash
+
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$PROJECT_ROOT" ]; then
+  echo "❌ pre-push: cannot resolve git project root"
+  exit 1
+fi
+
+HOOKS_SRC_DIR="$PROJECT_ROOT/scripts/hooks/prepush"
+
+if [ ! -f "$HOOKS_SRC_DIR/utils" ] || [ ! -f "$HOOKS_SRC_DIR/detekt-check" ]; then
+  echo "❌ pre-push: missing hook dependencies in $HOOKS_SRC_DIR"
+  exit 1
+fi
+
+# подключение файлов с функциями из репозитория
+. "$HOOKS_SRC_DIR/utils"
+. "$HOOKS_SRC_DIR/detekt-check"
 
 CI="${CI:-""}"
 
