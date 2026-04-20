@@ -10,7 +10,7 @@ internal class HomeRecipeMapper {
         return HomeRecipe(
             id = dto.id,
             title = dto.title,
-            cookingTimeMinutes = dto.cookingTimeMinutes + 10,
+            cookingTimeMinutes = dto.cookingTimeMinutes,
             proteinsGrams = dto.proteinsGrams,
             fatsGrams = dto.fatsGrams,
             carbsGrams = dto.carbsGrams,
