@@ -1,0 +1,4 @@
+interface:
+  display_name: "Feature Architecture"
+  short_description: "Project feature architecture guide."
+  default_prompt: "Use this skill when creating or modifying product features."
