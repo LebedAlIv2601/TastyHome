@@ -17,3 +17,7 @@ commonDependencies {
     implementation(projects.core.designSystem)
     implementation(projects.core.network.baseClient)
 }
+
+commonTestDependencies {
+    implementation(libs.kotlin.test)
+}
