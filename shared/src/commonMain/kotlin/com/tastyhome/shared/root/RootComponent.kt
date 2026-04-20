@@ -6,7 +6,10 @@ import com.arkivanov.decompose.router.stack.pushNew
 import com.tastyhome.base.foundation.uri.Uri
 import com.tastyhome.core.navigation.BaseParentComponent
 import com.tastyhome.core.navigation.Router
+import com.tastyhome.core.navigation.api.EmptyArgs
+import com.tastyhome.core.navigation.api.NoCallbacks
 import com.tastyhome.core.themeManager.api.ThemeManager
+import com.tastyhome.homeRecipes.api.HomeRecipesFeatureFactory
 import com.tastyhome.shared.deeplink.DeeplinkBus
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
@@ -20,9 +23,10 @@ import kotlinx.coroutines.supervisorScope
 class RootComponent internal constructor(
     @Assisted componentContext: ComponentContext,
     private val deeplinkBus: DeeplinkBus,
-    private val themeManager: ThemeManager
+    private val themeManager: ThemeManager,
+    private val homeRecipesFeatureFactory: HomeRecipesFeatureFactory,
 ) : BaseParentComponent<Router, Config>(
-    initialConfiguration = Config.Splash,
+    initialConfiguration = Config.HomeRecipes,
     serializer = Config.serializer(),
     router = Router { },
     componentContext = componentContext,
@@ -32,7 +36,13 @@ class RootComponent internal constructor(
 
     override fun createChild(config: Config, componentContext: ComponentContext): RootChild {
         return when (config) {
-            Config.Splash -> RootChild.SplashChild()
+            Config.HomeRecipes -> RootChild.HomeRecipesChild(
+                feature = homeRecipesFeatureFactory.create(
+                    componentContext = componentContext,
+                    args = EmptyArgs,
+                    callbacks = NoCallbacks,
+                ),
+            )
         }
     }
 

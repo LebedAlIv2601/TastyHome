@@ -70,7 +70,7 @@ fun Project.configureFeatureApi() {
     }
 }
 
-fun Project.configureScreenFeature() {
+fun Project.configureUiFeature() {
     enableCompose()
     enableDecompose()
     enableKotlinSerialization()

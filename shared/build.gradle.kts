@@ -34,6 +34,7 @@ commonDependencies {
     implementation(projects.core.designSystem)
 
     // features
+    implementation(projects.features.homeRecipes.impl)
 }
 
 commonTestDependencies {

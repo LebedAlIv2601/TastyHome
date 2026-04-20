@@ -54,4 +54,8 @@ include(
     ":core:designSystem",
     ":core:themeManager:api",
     ":core:themeManager:impl",
+
+    // features
+    ":features:homeRecipes:api",
+    ":features:homeRecipes:impl",
 )
