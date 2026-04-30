@@ -11,7 +11,7 @@ room {
 }
 
 commonDependencies {
-    implementation(libs.room.runtime)
+    api(libs.room.runtime)
     implementation(libs.room.sqliteBundled)
     implementation(libs.kotlinx.datetime)
 
