@@ -5,7 +5,7 @@ import com.tastyhome.base.domain.resource.holder.ResourceUpdateStrategy
 
 sealed interface DefaultResourceUpdateStrategy : ResourceUpdateStrategy {
 
-    object Straight : ResourceUpdateStrategy {
+    object Straight : DefaultResourceUpdateStrategy {
         override fun <T> updateResource(old: Resource<T>, new: Resource<T>): Resource<T> {
             return new
         }
@@ -17,7 +17,7 @@ sealed interface DefaultResourceUpdateStrategy : ResourceUpdateStrategy {
                 is Resource.Error<T> -> {
                     val oldValue = old.value
                     if(oldValue != null && new.value == null) {
-                        new.map { oldValue }
+                        Resource.Error(new.error, oldValue)
                     } else {
                         new
                     }

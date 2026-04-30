@@ -26,7 +26,7 @@ class ResourceHolder<T>(
             data != null -> Resource.Success(data)
             else -> Resource.Error(emptyDataError())
         }
-    }.onEach { resFlow.update { it } }
+    }.onEach { res -> resFlow.update { res } }
 
     override suspend fun update(res: Resource<T>) {
         val newValue = strategy.updateResource(resFlow.value, res)
