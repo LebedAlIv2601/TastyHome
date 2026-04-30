@@ -18,6 +18,9 @@
 ## TODO: Before Finishing
 
 - Check Gradle dependencies.
+- Check that `configureFeatureApi()` is used only in the feature `api` module and never in `impl`.
+- Check that ui feature `impl` modules use `configureScreenFeature()` instead of mixing api-module Gradle helpers into `impl`.
+- Check feature integration into `shared`: `shared/build.gradle.kts` must depend only on the feature `impl` module, while `FeatureBindings` includes the feature `*AppBindings` from `impl`.
 - Check DI wiring.
 - Check navigation contracts.
 - Check that public `FeatureFactory` signatures match `FeatureFactory.create(componentContext, args, callbacks)`.
@@ -31,6 +34,8 @@
 - Check that state contains `UiState<PresentationModel>` instead of `Resource`, `Throwable`, or `DataError`.
 - Check that `state` is assembled reactively from input-flow via `combine(...).stateIn(...)`, not maintained manually as mutable full-screen state.
 - Check that `MutableStateFlow` inside component are only private input-flow for state assembly.
+- Check that ephemeral loading flags around `scope.launch` use the project-preferred completion pattern: set the flag outside launch and reset it in `invokeOnCompletion`, unless there is a documented reason to do otherwise.
+- Check that component does not catch business/data errors from use case or repository methods whose contract already returns `Resource<T>` or another domain result type.
 - Check that presentation `*ModelMapper` maps domain models to presentation models and does not create `UiState`.
 - Check that every UI-facing presentation model is marked with Compose `@Immutable`.
 - Check that component only prepares data for UI and does not implement business logic, cache orchestration, offline-first merge, source-of-truth decisions, or persistent fallback recovery.

@@ -244,9 +244,10 @@ internal class ProfileComponent(
     }
 
     private fun refreshProfile() {
+        isRefreshingFlow.value = true
         scope.launch {
-            isRefreshingFlow.value = true
             refreshProfileUseCase()
+        }.invokeOnCompletion {
             isRefreshingFlow.value = false
         }
     }
@@ -269,10 +270,14 @@ internal class ProfileComponent(
 - Все UI события обрабатывай в одном `onUIEvent(event)` через exhaustive `when`.
 - Component может вызывать router/callbacks, use cases, mapper'ы и platform abstractions.
 - Component отвечает только за подготовку данных к отображению и реакцию на UI events.
+- Если component поднимает временный UI loading flag перед `scope.launch { ... }`, предпочитай поднимать флаг снаружи launch и сбрасывать его через `job.invokeOnCompletion { ... }`, а не через `try/finally` внутри coroutine body.
+- Callback в `invokeOnCompletion` должен использоваться только для cleanup ephemeral UI state и не должен содержать бизнес-логику, mapping, retry или navigation.
 - Component не должен реализовывать бизнес-логику, cache orchestration, offline-first merge, source-of-truth decisions, retry strategy уровня data/domain или reconciliation данных из нескольких источников.
 - Если component приходится вручную склеивать cached data, error state и loading state для domain-ресурса, сначала проверь, не должна ли эта ответственность находиться в repository/use case.
 - Component не должен компенсировать недостатки repository/use case временными UI fallback-механизмами, если проблема относится к data/domain слою.
 - Component может хранить только UI state и ephemeral UI-only flags; persistent caching и data recovery не являются его ответственностью.
+- Component не должен ловить business/data ошибки из use case или repository, если контракт этих методов уже возвращает `Resource<T>` или другой domain result type. Такие ошибки должны быть упакованы ниже, а component должен работать с результатом, а не с exception-based control flow.
+- `CancellationException` не относится к business/data error handling. Если после отмены coroutine нужен cleanup ephemeral UI state, используй completion handling, предпочтительно `invokeOnCompletion`.
 - Component не должен импортировать Compose, UI modifiers, DTO, Entity или concrete data sources.
 - Component не должен реализовывать `Feature`; `Feature` создается в `navigation/`.
 - One-shot effect flow не создавай. Навигацию обрабатывай в component через router/callbacks, а отображаемые сообщения/диалоги моделируй в едином state.
@@ -328,9 +333,10 @@ internal class ProfileComponent(
     }
 
     private fun refreshProfile() {
+        isRefreshingFlow.value = true
         scope.launch {
-            isRefreshingFlow.value = true
             refreshProfileUseCase()
+        }.invokeOnCompletion {
             isRefreshingFlow.value = false
         }
     }

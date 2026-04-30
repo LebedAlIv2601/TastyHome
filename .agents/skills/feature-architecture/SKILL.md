@@ -32,6 +32,7 @@ Use this skill as the implementation playbook for product features. Keep project
 - Presentation layer rules: `references/presentation-layer.md`
 - Decompose navigation rules: `references/navigation-decompose.md`
 - Metro DI rules: `references/metro-di.md`
+- Feature integration into `shared`: `references/feature-integration.md`
 - RemoteDataSource rules: `references/remote-datasource.md`
 - LocalDataSource rules: `references/local-datasource.md`
 - DataStore rules: `references/datastore.md`

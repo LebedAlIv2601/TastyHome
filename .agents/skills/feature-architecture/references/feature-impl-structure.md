@@ -24,7 +24,9 @@
 ## Gradle Configuration
 
 - В impl build.gradle.kts должен быть подключен плагин baseKmp
-- Должна быть использована функция configureUiFeature(), если фича - экран или флоу экранов или ui компонент
+- Для ui feature impl модуля должна быть использована функция `configureScreenFeature()`
+- `configureFeatureApi()` разрешена только в `api` модуле фичи. Подключать `configureFeatureApi()` в `impl` модуле строго запрещено, даже если impl реализует контракт своего api модуля
+- `impl` модуль должен получать публичный контракт своего feature через зависимость `api(projects.features.<feature>.api)`, а не через `configureFeatureApi()`
 - Если фича не содержит ui, то зависимости выбираются по необходимости
 - Если impl модуль реализует публичный контракт своего api модуля, зависимость на этот api модуль должна подключаться через `api(...)`, а не через `implementation(...)`
 

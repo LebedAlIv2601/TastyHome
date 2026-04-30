@@ -5,6 +5,7 @@
 DI в фичах служит для сборки internal зависимостей feature impl модуля и экспорта наружу только публичной factory из api модуля.
 
 Feature impl модуль подключается только в `shared`. Для root app graph фича становится видимой через `FeatureBindings`, куда добавляется `*AppBindings` фичи.
+`shared/build.gradle.kts` должен зависеть только от feature `impl` модуля. Отдельно подключать feature `api` модуль в `shared` нельзя, потому что `impl` уже обязан транзитивно экспортировать свой `api` через `api(...)`.
 
 ## File Location
 
