@@ -49,6 +49,7 @@ presentation/
 Presentation model описывает данные в форме, удобной конкретному экрану. Это не копия DTO/Entity и не публичная API model.
 
 ```kotlin
+@Immutable
 internal data class ProfileModel(
     val id: String,
     val title: String,
@@ -62,11 +63,14 @@ internal data class ProfileModel(
 
 - Модели лежат в `presentation/<screen>/model` и называются `*Model`.
 - Модели immutable: используй `data class` с `val`.
+- Все presentation models, которые используются в UI, должны быть помечены Compose-аннотацией `@Immutable`.
+- Если другая модель presentation-слоя напрямую передается в composable или лежит внутри `UiState<...>` для composable, она тоже должна быть помечена `@Immutable`.
 - Модели должны быть `internal`, если нет явной причины расширять видимость.
 - Модели не должны содержать DTO, Entity, `Resource`, `UiState`, `Throwable`, `DataError`, `CoroutineScope`, Decompose или Compose component types.
 - В модель можно класть UI-ready поля: отформатированные строки, флаги доступности actions, сгруппированные элементы списка.
 - Не клади в presentation model callbacks и mutable state. Действия идут через `Event`.
 - Если domain model уже идеально подходит экрану и не протекает через public API, отдельная presentation model не обязательна. Но как только появляются форматирование, группировка, UI flags или несколько domain-моделей, создавай `*Model`.
+- Не считай отсутствие `@Immutable` допустимым только потому, что модель "маленькая", "очевидно immutable" или "временная": для UI-facing presentation моделей это обязательное правило проекта.
 
 ## Model Mappers
 
@@ -92,6 +96,7 @@ internal class ProfileModelMapper @Inject constructor() {
 - Mapper лежит в `presentation/<screen>/mapper` и называется `*ModelMapper`.
 - Вход mapper'а: domain model или модель из api модуля фичи, если она является domain-level contract.
 - Выход mapper'а: presentation `*Model`.
+- Если mapper возвращает presentation model для UI, целевая модель обязана быть `@Immutable`.
 - Mapper не возвращает `UiState`; `UiState` создается через функции из `base/presentation`.
 - Если mapper нужен только в одном component, инжектируй его в component через Metro.
 
@@ -108,6 +113,7 @@ Component взаимодействует с UI через два публичн�
 internal data class ProfileState(
     val profile: UiState<ProfileModel> = UiState.Loading(),
     val isRefreshing: Boolean = false,
+    val query: String = "",
     val selectedTab: ProfileTab = ProfileTab.Info,
 )
 ```
@@ -117,6 +123,7 @@ internal sealed interface ProfileEvent {
     data object BackClicked : ProfileEvent
     data object RetryClicked : ProfileEvent
     data object RefreshTriggered : ProfileEvent
+    data class SearchQueryChanged(val query: String) : ProfileEvent
     data class TabSelected(val tab: ProfileTab) : ProfileEvent
 }
 ```
@@ -128,6 +135,9 @@ internal sealed interface ProfileEvent {
 - State содержит все, что нужно экрану для стабильной отрисовки: данные, loading/error через `UiState`, input values, selected ids/tabs, dialog flags, validation flags.
 - State должен иметь безопасные default values, чтобы UI мог отрисоваться до первой загрузки.
 - Для данных, пришедших из domain/usecase, используй `UiState<PresentationModel>` или `UiState<List<PresentationModel>>`.
+- Итоговый `state` должен собираться реактивно из нескольких input-flow через `combine(...).stateIn(...)`.
+- `MutableStateFlow` внутри component допустим только как private input-flow для сборки state, а не как вручную поддерживаемый полный `ScreenState`.
+- Сам `state` нельзя менять руками через `_stateFlow.update { ... }`; меняются только входные flow, из которых этот state собран.
 - Не дроби состояние на несколько публичных flow. Если UI должен знать значение, оно должно попасть в единый `ScreenState`.
 - Не клади в state `Resource`, `Throwable`, `DataError`, use cases, repositories, mutable collections или callbacks.
 
@@ -149,9 +159,9 @@ Screen component является presentation controller: управляет li
 @AssistedInject
 internal class ProfileComponent(
     @Assisted componentContext: ComponentContext,
-    @Assisted private val profileId: String,
     @Assisted private val router: ProfileRouter,
-    private val getProfileUseCase: GetProfileUseCase,
+    private val observeProfileUseCase: ObserveProfileUseCase,
+    private val refreshProfileUseCase: RefreshProfileUseCase,
     private val profileModelMapper: ProfileModelMapper,
 ) : BaseComponent<ProfileRouter>(
     router = router,
@@ -166,7 +176,6 @@ internal class ProfileComponent(
     fun interface Factory {
         fun create(
             componentContext: ComponentContext,
-            profileId: String,
             router: ProfileRouter,
         ): ProfileComponent
     }
@@ -177,9 +186,9 @@ internal class ProfileComponent(
 @AssistedInject
 internal class ProfileComponent(
     @Assisted componentContext: ComponentContext,
-    @Assisted private val profileId: String,
     @Assisted private val router: ProfileRouter,
-    private val getProfileUseCase: GetProfileUseCase,
+    private val observeProfileUseCase: ObserveProfileUseCase,
+    private val refreshProfileUseCase: RefreshProfileUseCase,
     private val profileModelMapper: ProfileModelMapper,
 ) : BaseComponent<ProfileRouter>(
     router = router,
@@ -190,60 +199,55 @@ internal class ProfileComponent(
     fun interface Factory {
         fun create(
             componentContext: ComponentContext,
-            profileId: String,
             router: ProfileRouter,
         ): ProfileComponent
     }
 
-    private val _stateFlow = MutableStateFlow(ProfileState())
-    val state: StateFlow<ProfileState> = _stateFlow.asStateFlow()
+    private val isRefreshingFlow = MutableStateFlow(false)
+    private val selectedTabFlow = MutableStateFlow(ProfileTab.Info)
+
+    private val profileFlow = combine(
+        observeProfileUseCase(),
+        isRefreshingFlow,
+    ) { resource, isRefreshing ->
+        resource.toUiState(
+            isLoading = isRefreshing,
+            mapper = profileModelMapper::map,
+        )
+    }
+
+    val state: StateFlow<ProfileState> = combine(
+        profileFlow,
+        isRefreshingFlow,
+        flowOf(""),
+        selectedTabFlow,
+        ::ProfileState,
+    ).stateIn(
+        scope = scope,
+        started = SharingStarted.WhileSubscribed(),
+        initialValue = ProfileState(),
+    )
 
     override fun onCreate() {
         super.onCreate()
-        loadProfile()
+        refreshProfile()
     }
 
     fun onUIEvent(event: ProfileEvent) {
         when (event) {
             ProfileEvent.BackClicked -> router.goBack()
-            ProfileEvent.RetryClicked -> loadProfile()
             ProfileEvent.RefreshTriggered -> refreshProfile()
-            is ProfileEvent.TabSelected -> {
-                _stateFlow.update { state -> state.copy(selectedTab = event.tab) }
-            }
-        }
-    }
-
-    private fun loadProfile() {
-        scope.launch {
-            _stateFlow.update { state ->
-                state.copy(profile = UiState.Loading(state.profile.model))
-            }
-
-            val resource = getProfileUseCase(profileId)
-            val profileState = resource.toUiState(
-                isLoading = false,
-                mapper = profileModelMapper::map,
-            )
-
-            _stateFlow.update { state -> state.copy(profile = profileState) }
+            ProfileEvent.RetryClicked -> refreshProfile()
+            is ProfileEvent.SearchQueryChanged -> { /* update query flow */ }
+            is ProfileEvent.TabSelected -> selectedTabFlow.value = event.tab
         }
     }
 
     private fun refreshProfile() {
         scope.launch {
-            _stateFlow.update { state -> state.copy(isRefreshing = true) }
-            val resource = getProfileUseCase(profileId)
-            val profileState = resource.toUiState(
-                isLoading = false,
-                mapper = profileModelMapper::map,
-            )
-            _stateFlow.update { state ->
-                state.copy(
-                    profile = profileState,
-                    isRefreshing = false,
-                )
-            }
+            isRefreshingFlow.value = true
+            refreshProfileUseCase()
+            isRefreshingFlow.value = false
         }
     }
 }
@@ -257,12 +261,128 @@ internal class ProfileComponent(
 - Отдельный interface для component допустим только если внутри impl модуля действительно нужны несколько реализаций одного и того же component contract.
 - Публично expose только `StateFlow`, не `MutableStateFlow`.
 - Публичное свойство состояния называй `state`. Не используй имя `stateFlow`, если нет очень сильной причины.
-- Обновляй state через `_stateFlow.update { it.copy(...) }`.
+- Собирай итоговый `state` реактивно через `combine(...).stateIn(...)` из private input-flow и domain/usecase flow.
+- Private `MutableStateFlow` используй только как input-flow для state assembly: например, `isRefreshingFlow`, `searchQueryFlow`, `selectedTabFlow`.
+- Производные части состояния тоже оформляй как private flow (`profileFlow`, `recipesFlow`, `filtersFlow` и т.д.), если они собираются из других flow.
+- Не поддерживай основной `ScreenState` вручную через `MutableStateFlow<ScreenState>` и `_stateFlow.update { ... }`.
+- Не смешивай два подхода одновременно: если экранный state собран реактивно, не дописывай его вручную отдельными `_stateFlow.update`.
 - Все UI события обрабатывай в одном `onUIEvent(event)` через exhaustive `when`.
 - Component может вызывать router/callbacks, use cases, mapper'ы и platform abstractions.
+- Component отвечает только за подготовку данных к отображению и реакцию на UI events.
+- Component не должен реализовывать бизнес-логику, cache orchestration, offline-first merge, source-of-truth decisions, retry strategy уровня data/domain или reconciliation данных из нескольких источников.
+- Если component приходится вручную склеивать cached data, error state и loading state для domain-ресурса, сначала проверь, не должна ли эта ответственность находиться в repository/use case.
+- Component не должен компенсировать недостатки repository/use case временными UI fallback-механизмами, если проблема относится к data/domain слою.
+- Component может хранить только UI state и ephemeral UI-only flags; persistent caching и data recovery не являются его ответственностью.
 - Component не должен импортировать Compose, UI modifiers, DTO, Entity или concrete data sources.
 - Component не должен реализовывать `Feature`; `Feature` создается в `navigation/`.
 - One-shot effect flow не создавай. Навигацию обрабатывай в component через router/callbacks, а отображаемые сообщения/диалоги моделируй в едином state.
+
+### Correct Example: Reactive State Assembly
+
+```kotlin
+@AssistedInject
+internal class ProfileComponent(
+    @Assisted componentContext: ComponentContext,
+    private val observeProfileUseCase: ObserveProfileUseCase,
+    private val refreshProfileUseCase: RefreshProfileUseCase,
+    private val profileModelMapper: ProfileModelMapper,
+) : BaseComponent<Router>(
+    router = Router { },
+    componentContext = componentContext,
+) {
+    private val isRefreshingFlow = MutableStateFlow(false)
+    private val searchQueryFlow = MutableStateFlow("")
+
+    private val profileFlow = combine(
+        observeProfileUseCase(),
+        isRefreshingFlow,
+    ) { resource, isRefreshing ->
+        resource.toUiState(
+            isLoading = isRefreshing,
+            mapper = profileModelMapper::map,
+        )
+    }
+
+    val state: StateFlow<ProfileState> = combine(
+        profileFlow,
+        searchQueryFlow,
+        flowOf(ProfileTab.Info),
+        ::ProfileState,
+    ).stateIn(
+        scope = scope,
+        started = SharingStarted.WhileSubscribed(),
+        initialValue = ProfileState(),
+    )
+
+    override fun onCreate() {
+        super.onCreate()
+        refreshProfile()
+    }
+
+    fun onUIEvent(event: ProfileEvent) {
+        when (event) {
+            ProfileEvent.RetryClicked -> refreshProfile()
+            is ProfileEvent.SearchQueryChanged -> searchQueryFlow.value = event.query
+            else -> {}
+        }
+    }
+
+    private fun refreshProfile() {
+        scope.launch {
+            isRefreshingFlow.value = true
+            refreshProfileUseCase()
+            isRefreshingFlow.value = false
+        }
+    }
+}
+```
+
+Этот пример правильный, потому что итоговый `state` не мутируется вручную, а вычисляется как производная функция от нескольких входных flow. Component меняет только input-flow и запускает side effects, а экранное состояние реактивно пересобирается через `combine`.
+
+### Incorrect Example: Imperative ScreenState Mutation
+
+```kotlin
+@AssistedInject
+internal class ProfileComponent(
+    @Assisted componentContext: ComponentContext,
+    private val refreshProfileUseCase: RefreshProfileUseCase,
+    private val profileModelMapper: ProfileModelMapper,
+) : BaseComponent<Router>(
+    router = Router { },
+    componentContext = componentContext,
+) {
+    private val _stateFlow = MutableStateFlow(ProfileState())
+    val state: StateFlow<ProfileState> = _stateFlow.asStateFlow()
+
+    fun onUIEvent(event: ProfileEvent) {
+        when (event) {
+            is ProfileEvent.SearchQueryChanged -> {
+                _stateFlow.update { it.copy(query = event.query) }
+            }
+
+            ProfileEvent.RetryClicked -> refreshProfile()
+        }
+    }
+
+    private fun refreshProfile() {
+        scope.launch {
+            _stateFlow.update { it.copy(isRefreshing = true) }
+            val resource = refreshProfileUseCase()
+            _stateFlow.update { current ->
+                current.copy(
+                    isRefreshing = false,
+                    profile = resource.toUiState(
+                        isLoading = false,
+                        mapper = profileModelMapper::map,
+                    ),
+                )
+            }
+        }
+    }
+}
+```
+
+Этот пример неправильный, потому что component вручную поддерживает итоговый `ScreenState`, смешивает обработку событий с императивной сборкой состояния и теряет прозрачную реактивную структуру входных данных. Такой подход хуже масштабируется и легче приводит к рассинхрону между частями state.
 
 ## Resource To UiState
 

@@ -23,6 +23,7 @@ Mapper'ы преобразуют модели между слоями и не д
 - Presentation mapper может знать про domain модели и presentation модели.
 - Presentation mapper не должен знать про DTO, Entity, RemoteDataSource, LocalDataSource или Repository.
 - Domain слой не содержит mapper'ы в presentation или data модели.
+- Если presentation mapper возвращает модель, которая попадет в UI, эта модель должна быть помечена `@Immutable`.
 
 ## Behavior Rules
 
