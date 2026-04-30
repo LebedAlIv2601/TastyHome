@@ -10,6 +10,7 @@ fun Project.enableCompose() {
         implementation(libs.compose.runtime)
         implementation(libs.compose.material3)
         implementation(libs.compose.resources)
+        implementation(project("base:ui"))
     }
 }
 
@@ -63,6 +64,15 @@ fun Project.enableLocalStorage() {
     }
 }
 
+fun Project.enableNetwork() {
+    enableKotlinSerialization()
+    commonDependencies {
+        implementation(project(":base:network"))
+        implementation(project(":core:network:baseClient"))
+        implementation(libs.ktor.core)
+    }
+}
+
 fun Project.configureFeatureApi() {
     commonDependencies {
         implementation(project(":base:navigation:api"))
@@ -77,5 +87,11 @@ fun Project.configureScreenFeature() {
     enableMetro()
     commonDependencies {
         implementation(libs.lifecycle.runtimeCompose)
+        implementation(project(":base:foundation"))
+        implementation(project(":base:domain"))
+        implementation(project(":base:navigation"))
+        implementation(project(":base:presentation"))
+        implementation(project(":base:logger"))
+        implementation(project(":base:platform"))
     }
 }
