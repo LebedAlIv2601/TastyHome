@@ -26,6 +26,7 @@
 - В impl build.gradle.kts должен быть подключен плагин baseKmp
 - Должна быть использована функция configureUiFeature(), если фича - экран или флоу экранов или ui компонент
 - Если фича не содержит ui, то зависимости выбираются по необходимости
+- Если impl модуль реализует публичный контракт своего api модуля, зависимость на этот api модуль должна подключаться через `api(...)`, а не через `implementation(...)`
 
 ## Data Folder Structure
 
@@ -60,12 +61,12 @@
 ## Presentation Folder Structure
 
 - Структура папки presentation: создается подпапка на каждый отдельный компонент / экран
-- Внутри подпапок presentation: папка navigation, папка composable, папка component, внутри папки component папка s&e, папка model, папка mapper
+- Внутри подпапок presentation: папка navigation, папка composable, папка component, папка model, папка mapper
     - папка navigation root/single-screen входа содержит реализацию public FeatureFactory, интерфейс которой лежит в api
     - папка navigation внутренних экранов flow содержит internal `*FeatureFactory`, которая создает graph этого экрана
     - папка composable содержит в себе все composable функции фичи
-    - папка component содержит все decompose components
-    - папка s&e содержит `*State` и `*Event` для взаимодействия component и composable: component expose-ит единый `StateFlow<*State>` и принимает события через единый `onUIEvent(event)`
+    - папка component содержит все decompose components, а также `*State` и `*Event`
+    - `*State` и `*Event` лежат рядом с component в одной папке `component`, чтобы не плодить лишнюю вложенность
     - папка model содержит presentation модели данных
     - папка mapper содержит внутри себя мапперы для маппинга из domain моделей в presentation модели данных 
 
@@ -111,9 +112,8 @@
                                         └── profile/
                                             ├── component/
                                             │   ├── ProfileComponent.kt
-                                            │   └── s&e/
-                                            │       ├── ProfileEvent.kt
-                                            │       └── ProfileState.kt
+                                            │   ├── ProfileEvent.kt
+                                            │   └── ProfileState.kt
                                             ├── composable/
                                             │   ├── ProfileContent.kt
                                             │   └── ProfileScreen.kt
@@ -165,9 +165,8 @@
                                         ├── profileRoot/
                                         │   ├── component/
                                         │   │   ├── ProfileRootComponent.kt
-                                        │   │   └── s&e/
-                                        │   │       ├── RootEvent.kt
-                                        │   │       └── RootState.kt
+                                        │   │   ├── RootEvent.kt
+                                        │   │   └── RootState.kt
                                         │   ├── composable/
                                         │   │   └── RootContent.kt
                                         │   └── navigation/
@@ -175,9 +174,8 @@
                                         ├── profile/
                                         │   ├── component/
                                         │   │   ├── ProfileComponent.kt
-                                        │   │   └── s&e/
-                                        │   │       ├── ProfileEvent.kt
-                                        │   │       └── ProfileState.kt
+                                        │   │   ├── ProfileEvent.kt
+                                        │   │   └── ProfileState.kt
                                         │   ├── composable/
                                         │   │   ├── ProfileContent.kt
                                         │   │   └── ProfileScreen.kt
@@ -190,9 +188,8 @@
                                         └── profileEdit/
                                             ├── component/
                                             │   ├── ProfileEditComponent.kt
-                                            │   └── s&e/
-                                            │       ├── ProfileEditEvent.kt
-                                            │       └── ProfileEditState.kt
+                                            │   ├── ProfileEditEvent.kt
+                                            │   └── ProfileEditState.kt
                                             ├── composable/
                                             │   ├── ProfileEditContent.kt
                                             │   └── ProfileEditScreen.kt
@@ -275,8 +272,8 @@
                                         └── profile/
                                             ├── component/
                                             │   ├── ProfileComponent.kt
-                                            │   ├── ProfileEvent.kt // ошибка: эвенты должны лежать в s&e папке
-                                            │   └── ProfileState.kt // ошибка: стейты должны лежать в s&e папке
+                                            │   ├── ProfileEvent.kt
+                                            │   └── ProfileState.kt
                                             ├── composable/
                                             │   ├── ProfileContent.kt
                                             │   └── ProfileScreen.kt

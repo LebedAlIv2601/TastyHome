@@ -82,7 +82,7 @@
                                     └── presentation/
                                         └── profile/
                                             ├── component/
-                                            │   └── DefaultProfileComponent.kt
+                                            │   └── ProfileComponent.kt
                                             └── composable/
                                                 └── ProfileContent.kt
     ```

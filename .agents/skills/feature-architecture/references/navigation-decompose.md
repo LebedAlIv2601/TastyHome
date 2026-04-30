@@ -162,11 +162,19 @@ internal interface ProfileDetailsGraph {
 Обычный screen component наследуется от `BaseComponent<RouterType>`, но не реализует `Feature`. `Feature` создается в navigation layer через функцию `Feature { }` и внутри вызывает composable, принимающую component.
 
 ```kotlin
-internal interface ProfileDetailsComponent {
+@AssistedInject
+internal class ProfileDetailsComponent(
+    @Assisted componentContext: ComponentContext,
+    @Assisted private val profileId: String,
+    @Assisted private val router: ProfileRouter,
+) : BaseComponent<ProfileRouter>(
+    router = router,
+    componentContext = componentContext,
+) {
 
-    val stateFlow: StateFlow<ProfileDetailsState>
+    val state: StateFlow<ProfileDetailsState> = ...
 
-    fun onUIEvent(event: ProfileDetailsEvent)
+    fun onUIEvent(event: ProfileDetailsEvent) { ... }
 
     @AssistedFactory
     fun interface Factory {
@@ -177,23 +185,14 @@ internal interface ProfileDetailsComponent {
         ): ProfileDetailsComponent
     }
 }
-
-@AssistedInject
-internal class DefaultProfileDetailsComponent(
-    @Assisted componentContext: ComponentContext,
-    @Assisted private val profileId: String,
-    @Assisted private val router: ProfileRouter,
-) : BaseComponent<ProfileRouter>(
-    router = router,
-    componentContext = componentContext,
-), ProfileDetailsComponent
 ```
 
 Правила:
 
 - Runtime параметры component помечаются `@Assisted`: `ComponentContext`, args/config fields, callbacks/router.
 - DI зависимости передаются обычными параметрами класса.
-- Component expose-ит UI только единый `StateFlow<*State>` и единый метод `onUIEvent(event)`.
+- По умолчанию screen component представляет собой один concrete класс `*Component`, а не пару `interface + Default...Component`.
+- Component expose-ит UI только единый `StateFlow<*State>` в свойстве `state` и единый метод `onUIEvent(event)`.
 - Не добавляй отдельные UI методы вроде `onRetryClick`, `onBackClick`, `onNameChanged`: они должны быть events.
 - Screen component не должен знать о `StackNavigation` parent component. Он вызывает методы `router`.
 - Component не содержит `@Composable View` и не наследуется от `Feature`.

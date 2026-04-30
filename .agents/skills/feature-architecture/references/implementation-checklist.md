@@ -11,7 +11,7 @@
 - Keep platform details in platform source sets or platform abstractions.
 - Keep data, domain, and presentation models separated.
 - Reuse existing project patterns.
-- Keep UI communication to one `StateFlow<*State>` and one `onUIEvent(event)` method per component.
+- Keep UI communication to one `StateFlow<*State>` in property `state` and one `onUIEvent(event)` method per component.
 - Map domain `Resource<T>` to presentation `UiState<Model>` in the component/presentation layer.
 - Map `Throwable`/`DataError` to `UiError` before data reaches composable functions.
 
@@ -26,12 +26,13 @@
 - Check that internal screen `*FeatureFactory` creates its own screen graph.
 - Check that internal screen `*AppBindings` are included in the root feature graph, not in `shared`.
 - Check that stack animations/shared transitions are configured in composables, not components.
-- Check that each screen component exposes a single immutable `stateFlow`.
+- Check that each screen component exposes a single immutable `state` `StateFlow`.
 - Check that every UI action goes through `onUIEvent(event)`.
 - Check that state contains `UiState<PresentationModel>` instead of `Resource`, `Throwable`, or `DataError`.
 - Check that presentation `*ModelMapper` maps domain models to presentation models and does not create `UiState`.
 - Check state/error mapping: `Resource.toUiState(...)`, `Throwable.toUiError()`, `DataError.toUiError()`, or feature-specific `UiError` mapper.
 - Check repository boundaries and `Resource<T>`/holder usage.
+- For offline-first SSOT flows with observable local storage, check that `ResourceHolder + CacheHolder(local source)` was considered before moving refresh/error orchestration into presentation.
 - Run relevant tests/static checks.
 
 ## TODO: Review Questions
@@ -42,6 +43,7 @@
 - Did presentation depend on data?
 - Did domain depend on presentation?
 - Did repository return DTO, Entity, presentation model, or `UiState` outside the data layer?
+- Did an offline-first repository bypass `ResourceHolder + CacheHolder(local source)` and push refresh/error merge logic into the component without a strong reason?
 - Did a feature expose internal screen configs, child factories, components, or navigation details through its api module?
-- Did a composable collect anything except the component's single `stateFlow`?
+- Did a composable collect anything except the component's single `state` flow?
 - Did a composable call router, use cases, repositories, or platform APIs directly?

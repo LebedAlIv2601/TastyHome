@@ -74,9 +74,6 @@ data class ProfileParentDependencies(
 
 @DependencyGraph(
     ProfileScope::class,
-    bindingContainers = [
-        ProfileInternalBindings::class,
-    ],
 )
 internal interface ProfileGraph {
 
@@ -89,13 +86,6 @@ internal interface ProfileGraph {
             parentDependencies: ProfileParentDependencies,
         ): ProfileGraph
     }
-}
-
-@BindingContainer
-internal abstract class ProfileInternalBindings {
-
-    @Binds
-    internal abstract val DefaultProfileComponent.Factory.bind: ProfileComponent.Factory
 }
 
 @BindingContainer
@@ -268,7 +258,7 @@ internal fun appDatabase(
 Сюда помещаются:
 
 - bindings внутренних интерфейсов фичи к реализациям;
-- bindings component factories;
+- bindings component factories только если у компонента есть отдельный interface contract и это действительно нужно;
 - bindings internal screen dependencies, если они нужны только внутри screen graph;
 - providers для объектов, которые нужны только внутри feature graph.
 
@@ -288,9 +278,11 @@ internal fun appDatabase(
 internal abstract class ProfileInternalBindings {
 
     @Binds
-    internal abstract val DefaultProfileComponent.Factory.bind: ProfileComponent.Factory
+    internal abstract val DefaultProfileValidator.bind: ProfileValidator
 }
 ```
+
+Если у screen component используется один concrete класс `ProfileComponent`, то отдельный binding для его factory обычно не нужен: `ProfileGraph` может напрямую экспортировать `ProfileComponent.Factory`.
 
 ## AppBindings
 

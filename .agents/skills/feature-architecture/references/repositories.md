@@ -7,7 +7,7 @@ Repository в feature impl модуле является data-layer фасадо
 Repository:
 
 - координирует `RemoteDataSource`, `LocalDataSource` и mapper'ы;
-- владеет локальными cache/resource holder'ами, если repository нужен in-memory resource state;
+- владеет локальными cache/resource holder'ами, если repository нужен in-memory или cache-backed resource state;
 - скрывает DTO, Entity, DataStore, database и network детали от domain/presentation;
 - возвращает domain модели, `Resource<T>` или `Flow<Resource<T>>`;
 - содержит orchestration data-операций, но не содержит UI-логику.
@@ -103,6 +103,24 @@ Holder'ы являются локальной деталью repository. Они 
 - есть отдельный `CacheHolder<T?>`, связанный с локальным источником данных;
 - нужно совместить локальные cached data и последнее error состояние;
 - repository наблюдает cache как `Flow<Resource<T>>`.
+
+Для offline-first и single-source-of-truth сценариев с observable локальным хранилищем (`Room`, `DataStore`, другой persistent source) по умолчанию предпочитай `ResourceHolder<T>` c `CacheHolder`, оборачивающим локальный источник данных.
+
+Если UI должен одновременно:
+
+- читать данные из локального SSOT-источника;
+- переживать refresh из сети;
+- сохранять старые данные при ошибке refresh;
+- получать `Resource.Error(error, cachedValue)` поверх уже сохраненных данных,
+
+то не обходи `ResourceHolder` прямым `observeLocal().mapResource { ... }`, если из-за этого error/loading orchestration придется переносить в presentation/component слой.
+
+В таких случаях repository должен:
+
+- собирать `CacheHolder` поверх local source (`observe` читает из БД/хранилища, `update` пишет туда же);
+- держать `ResourceHolder` как private field;
+- наружу отдавать `resourceHolder.observe()`;
+- после refresh/update операции вызывать `resourceHolder.update(resource)`.
 
 Если для `ResourceHolder` нужен `CacheHolder`, собирай `CacheHolder` локально в repository из уже существующего local source. Не выноси `CacheHolder`/`ResourceHolder` в DI graph.
 
@@ -210,6 +228,48 @@ internal class ProfileRepository(
     }
 }
 ```
+
+## Correct Example: Offline-First SSOT With Database Cache
+
+```kotlin
+internal class RecipesRepository(
+    private val remoteDataSource: RecipesRemoteDataSource,
+    private val localDataSource: RecipesLocalDataSource,
+    private val entityMapper: RecipeEntityMapper,
+    private val dtoMapper: RecipeDTOMapper,
+) {
+    private val recipesHolder = ResourceHolder(
+        cacheHolder = CacheHolder(
+            observe = {
+                localDataSource.observeRecipes()
+                    .map { entities -> entities?.map(entityMapper::toDomain) }
+            },
+            update = { recipes ->
+                localDataSource.saveRecipes(
+                    recipes.mapIndexed { index, recipe ->
+                        dtoMapper.toEntity(recipe, index)
+                    }
+                )
+            }
+        )
+    )
+
+    fun observeRecipes(): Flow<Resource<List<Recipe>>> {
+        return recipesHolder.observe()
+    }
+
+    suspend fun refreshRecipes(): Resource<List<Recipe>> {
+        val resource = runCatchingResource {
+            val dto = fetch { remoteDataSource.getRecipes() }
+            dto.map(dtoMapper::toDomain)
+        }
+        recipesHolder.update(resource)
+        return resource
+    }
+}
+```
+
+Этот паттерн предпочтителен для offline-first фич, где локальная БД является SSOT, а repository должен сохранить refresh error рядом с уже имеющимися cached data.
 
 ## Incorrect Example
 

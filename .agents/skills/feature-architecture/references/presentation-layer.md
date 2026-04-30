@@ -21,9 +21,8 @@ presentation/
 └── profile/
     ├── component/
     │   ├── ProfileComponent.kt
-    │   └── s&e/
-    │       ├── ProfileEvent.kt
-    │       └── ProfileState.kt
+    │   ├── ProfileEvent.kt
+    │   └── ProfileState.kt
     ├── composable/
     │   ├── ProfileContent.kt
     │   └── ProfileScreen.kt
@@ -38,8 +37,8 @@ presentation/
 Правила:
 
 - `navigation/` создает feature entrypoint и связывает component с top-level composable.
-- `component/` содержит Decompose component interface, default implementation и assisted factory.
-- `component/s&e/` содержит state и events для взаимодействия component и UI.
+- `component/` содержит concrete Decompose component class и его assisted factory.
+- `component/` также содержит `*State` и `*Event` для взаимодействия component и UI.
 - `composable/` содержит Compose функции экрана и мелкие UI-блоки.
 - `model/` содержит presentation models, если domain model нельзя отдавать в UI напрямую.
 - `mapper/` содержит `*ModelMapper`, которые маппят domain models в presentation models.
@@ -103,6 +102,8 @@ Component взаимодействует с UI через два публичн�
 - единый `StateFlow<ScreenState>` с полным состоянием экрана;
 - единый метод `onUIEvent(event)` для всех событий от UI.
 
+Публичное имя этого `StateFlow` по умолчанию должно быть `state`, а не `stateFlow`.
+
 ```kotlin
 internal data class ProfileState(
     val profile: UiState<ProfileModel> = UiState.Loading(),
@@ -122,7 +123,7 @@ internal sealed interface ProfileEvent {
 
 Правила для state:
 
-- State лежит в `component/s&e` и называется `*State`.
+- State лежит рядом с component в `component/` и называется `*State`.
 - State должен быть одним `data class` на component.
 - State содержит все, что нужно экрану для стабильной отрисовки: данные, loading/error через `UiState`, input values, selected ids/tabs, dialog flags, validation flags.
 - State должен иметь безопасные default values, чтобы UI мог отрисоваться до первой загрузки.
@@ -132,7 +133,7 @@ internal sealed interface ProfileEvent {
 
 Правила для events:
 
-- Events лежат в `component/s&e` и называются `*Event`.
+- Events лежат рядом с component в `component/` и называются `*Event`.
 - Используй `sealed interface`.
 - Event описывает намерение пользователя или UI lifecycle trigger: `RetryClicked`, `SearchQueryChanged`, `RefreshTriggered`, `BackClicked`.
 - Event не должен описывать implementation detail component: не `LoadProfileUseCaseStarted`, не `RepositoryFailed`.
@@ -145,9 +146,19 @@ internal sealed interface ProfileEvent {
 Screen component является presentation controller: управляет lifecycle, вызывает use cases, маппит результаты, обновляет state и дергает router/callbacks. Он не содержит Compose UI.
 
 ```kotlin
-internal interface ProfileComponent {
+@AssistedInject
+internal class ProfileComponent(
+    @Assisted componentContext: ComponentContext,
+    @Assisted private val profileId: String,
+    @Assisted private val router: ProfileRouter,
+    private val getProfileUseCase: GetProfileUseCase,
+    private val profileModelMapper: ProfileModelMapper,
+) : BaseComponent<ProfileRouter>(
+    router = router,
+    componentContext = componentContext,
+) {
 
-    val stateFlow: StateFlow<ProfileState>
+    val state: StateFlow<ProfileState>
 
     fun onUIEvent(event: ProfileEvent)
 
@@ -164,7 +175,7 @@ internal interface ProfileComponent {
 
 ```kotlin
 @AssistedInject
-internal class DefaultProfileComponent(
+internal class ProfileComponent(
     @Assisted componentContext: ComponentContext,
     @Assisted private val profileId: String,
     @Assisted private val router: ProfileRouter,
@@ -173,17 +184,26 @@ internal class DefaultProfileComponent(
 ) : BaseComponent<ProfileRouter>(
     router = router,
     componentContext = componentContext,
-), ProfileComponent {
+) {
+
+    @AssistedFactory
+    fun interface Factory {
+        fun create(
+            componentContext: ComponentContext,
+            profileId: String,
+            router: ProfileRouter,
+        ): ProfileComponent
+    }
 
     private val _stateFlow = MutableStateFlow(ProfileState())
-    override val stateFlow: StateFlow<ProfileState> = _stateFlow.asStateFlow()
+    val state: StateFlow<ProfileState> = _stateFlow.asStateFlow()
 
     override fun onCreate() {
         super.onCreate()
         loadProfile()
     }
 
-    override fun onUIEvent(event: ProfileEvent) {
+    fun onUIEvent(event: ProfileEvent) {
         when (event) {
             ProfileEvent.BackClicked -> router.goBack()
             ProfileEvent.RetryClicked -> loadProfile()
@@ -233,7 +253,10 @@ internal class DefaultProfileComponent(
 
 - Runtime параметры component помечай `@Assisted`: `ComponentContext`, args/config fields, router/callbacks.
 - DI зависимости передавай обычными constructor параметрами.
+- По умолчанию не создавай отдельную пару `interface + Default...Component`. Для screen component используй один concrete класс `*Component`.
+- Отдельный interface для component допустим только если внутри impl модуля действительно нужны несколько реализаций одного и того же component contract.
 - Публично expose только `StateFlow`, не `MutableStateFlow`.
+- Публичное свойство состояния называй `state`. Не используй имя `stateFlow`, если нет очень сильной причины.
 - Обновляй state через `_stateFlow.update { it.copy(...) }`.
 - Все UI события обрабатывай в одном `onUIEvent(event)` через exhaustive `when`.
 - Component может вызывать router/callbacks, use cases, mapper'ы и platform abstractions.
@@ -317,7 +340,7 @@ val profileState = resource.toUiState(
 
 Composable слой делится на connector и pure screen:
 
-- `*Content` принимает `component`, собирает `stateFlow` и передает state/events дальше.
+- `*Content` принимает `component`, собирает `state` и передает state/events дальше.
 - `*Screen` принимает `state`, `onEvent` и `modifier`, не знает про Decompose component.
 - Мелкие composable принимают конкретные values и callbacks/events, а не весь component.
 
@@ -327,7 +350,7 @@ internal fun ProfileContent(
     component: ProfileComponent,
     modifier: Modifier = Modifier,
 ) {
-    val state by component.stateFlow.collectAsStateWithLifecycle()
+    val state by component.state.collectAsStateWithLifecycle()
 
     ProfileScreen(
         state = state,
@@ -368,7 +391,7 @@ internal fun ProfileScreen(
 
 - UI отправляет наверх только `Event`, а не вызывает use cases, repositories или router напрямую.
 - `*Screen` и дочерние composable должны быть максимально pure: state in, event out.
-- Не собирай несколько flow из component в composable. Собирай единый `stateFlow`.
+- Не собирай несколько flow из component в composable. Собирай единый `state`.
 - Используй design system (`MyTheme`, базовые components, typography/colors) вместо локальных случайных цветов/типографики.
 - Не держи business logic в composable. Сложные вычисления и форматирование выноси в mapper/component.
 - Для platform behavior используй platform abstractions через component/usecase, а не прямые platform calls из UI.
@@ -376,7 +399,7 @@ internal fun ProfileScreen(
 
 ## Anti-Patterns
 
-- `fun onRetryClick()` / `fun onBackClick()` / `fun onQueryChanged(value: String)` в component interface вместо `onUIEvent(event)`.
+- `fun onRetryClick()` / `fun onBackClick()` / `fun onQueryChanged(value: String)` в component class вместо `onUIEvent(event)`.
 - Несколько публичных `StateFlow` под разные куски экрана.
 - `Resource<T>` или `Throwable` в `*State`.
 - DTO/Entity в presentation model или composable.
