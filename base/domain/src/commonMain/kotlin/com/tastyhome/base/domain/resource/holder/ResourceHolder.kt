@@ -30,7 +30,7 @@ class ResourceHolder<T>(
 
     override suspend fun update(res: Resource<T>) {
         val newValue = strategy.updateResource(resFlow.value, res)
-        cacheHolder.update(res.value)
+        cacheHolder.update(newValue.value)
         errorFlow.update { newValue.throwableOrNull() }
     }
 }
