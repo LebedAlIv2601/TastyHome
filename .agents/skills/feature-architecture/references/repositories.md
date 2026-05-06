@@ -124,6 +124,14 @@ Holder'ы являются локальной деталью repository. Они 
 
 Если для `ResourceHolder` нужен `CacheHolder`, собирай `CacheHolder` локально в repository из уже существующего local source. Не выноси `CacheHolder`/`ResourceHolder` в DI graph.
 
+Правило завершения refresh для offline-first SSOT:
+
+- Если repository делает `remote -> save to local SSOT` и вызывающий код использует завершение `refresh*()` для управления loading lifecycle, то успешный `refresh*()` не должен завершаться сразу после успешного network ответа.
+- После `Resource.Success` от remote-части repository должен дождаться подтвержденного `Success` от локального observable source после записи в БД/хранилище.
+- Это правило нужно, чтобы presentation/component слой не ловил промежуточное состояние между `remote success` и `local success` и не был вынужден самостоятельно оркестрировать ожидание локального SSOT.
+- Допустимо дожидаться первого `Success` от локального источника, даже если это временно оставляет на экране stale data чуть дольше, если такой UX tradeoff принят в проекте.
+- Если сценарию нужна строгая гарантия именно свежего snapshot, repository должен ждать не просто `any Success`, а подтверждение конкретной новой версии данных.
+
 Update strategy:
 
 - `DefaultResourceUpdateStrategy.Straight` сохраняет новый `Resource` как есть.
@@ -264,12 +272,15 @@ internal class RecipesRepository(
             dto.map(dtoMapper::toDomain)
         }
         recipesHolder.update(resource)
+        if (resource is Resource.Success) {
+            recipesHolder.observe().firstOrNull { it is Resource.Success }
+        }
         return resource
     }
 }
 ```
 
-Этот паттерн предпочтителен для offline-first фич, где локальная БД является SSOT, а repository должен сохранить refresh error рядом с уже имеющимися cached data.
+Этот паттерн предпочтителен для offline-first фич, где локальная БД является SSOT, а repository должен сохранить refresh error рядом с уже имеющимися cached data и завершать refresh только после возврата локального `Success`.
 
 ## Incorrect Example
 

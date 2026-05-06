@@ -43,6 +43,7 @@
 - Check that every DTO class is marked with `@Serializable`, including temporary mock-backed request/response models.
 - Check repository boundaries and `Resource<T>`/holder usage.
 - For offline-first SSOT flows with observable local storage, check that `ResourceHolder + CacheHolder(local source)` was considered before moving refresh/error orchestration into presentation.
+- For offline-first SSOT refresh methods that write remote data into local storage, check that successful refresh completion waits for local `Success` from the SSOT source instead of ending immediately after network success when loading lifecycle depends on it.
 - Run relevant tests/static checks.
 
 ## TODO: Review Questions
@@ -54,6 +55,7 @@
 - Did domain depend on presentation?
 - Did repository return DTO, Entity, presentation model, or `UiState` outside the data layer?
 - Did an offline-first repository bypass `ResourceHolder + CacheHolder(local source)` and push refresh/error merge logic into the component without a strong reason?
+- Did an offline-first refresh finish on network success even though the intended UX requires waiting for local SSOT `Success` after persistence?
 - Did component rebuild cached fallback/error merge logic that should already be owned by repository or use case?
 - Did component mutate the final `ScreenState` manually instead of deriving it from input-flow?
 - Did a feature expose internal screen configs, child factories, components, or navigation details through its api module?
