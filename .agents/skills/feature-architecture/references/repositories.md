@@ -7,9 +7,10 @@ Repository в feature impl модуле является data-layer фасадо
 Repository:
 
 - координирует `RemoteDataSource`, `LocalDataSource` и mapper'ы;
-- владеет локальными cache/resource holder'ами, если repository нужен in-memory или cache-backed resource state;
 - скрывает DTO, Entity, DataStore, database и network детали от domain/presentation;
-- возвращает domain модели, `Resource<T>` или `Flow<Resource<T>>`;
+- для данных экрана отдает observable local source (`Flow<Domain?>`, `Flow<List<Domain>?>`, `Flow<Domain>`);
+- для remote sync/command операций возвращает `ResultStatus`;
+- для одноразовых операций с payload возвращает `Result<T>`;
 - содержит orchestration data-операций, но не содержит UI-логику.
 
 Repository не должен быть просто папкой для любого кода. Если логика относится к одному источнику данных, она должна остаться в `RemoteDataSource` или `LocalDataSource`; если это бизнес-сценарий, она должна быть в use case.
@@ -37,31 +38,104 @@ data/
 ## Dependency Rules
 
 - Repository может зависеть от `RemoteDataSource`, `LocalDataSource`, mapper'ов и других data-layer helpers своей фичи.
-- `ResourceHolder`/`LocalResourceHolder` не являются DI-зависимостью repository. Если holder нужен, repository создает его сам как private field.
 - Repository может использовать domain модели как return/input модели.
 - Repository не должен зависеть от presentation моделей, `UiState`, Compose, Decompose components, navigation callbacks или UI mapper'ов.
 - Repository не должен принимать или возвращать DTO/Entity наружу, если метод используется domain слоем.
 - Repository не должен импортировать feature API модели без необходимости. Публичные Args/Callbacks обычно остаются на navigation boundary, а не в data слое.
 
+## Screen Data Rules
+
+Если данные отображаются на экране, remote response не является источником UI-data напрямую.
+
+Правильный поток:
+
+```text
+remote request -> validate/map -> save to local source -> return ResultStatus
+local observable source -> domain Flow -> component createUiState(...)
+```
+
+Правила:
+
+- Экранные данные наружу отдаются через `observe*(): Flow<Domain?>`, `Flow<List<Domain>?>` или другой observable domain flow из локального источника.
+- Remote sync метод (`refresh*`, `sync*`, `load*`) возвращает только `ResultStatus`.
+- Remote sync метод должен записывать успешный результат в локальный source (`Room`, `DataStore`, in-memory `MutableStateFlow` и т.д.).
+- Component собирает `UiState` из observable data, UI loading flag и `ResultStatus` через helper из `base/presentation`.
+- Не возвращай экранные данные из remote sync метода, если эти же данные должны отображаться через локальный source.
+- Не держи параллельную правду: UI не должен одновременно брать свежий network payload и cached data из локального источника.
+
+## Command And One-Shot Rules
+
+Для операций без отображаемого payload:
+
+- Возвращай `ResultStatus`, если UI нужен только факт успеха/ошибки.
+- Если command меняет данные, которые отображаются на экране, после успешной операции обнови локальный source или инвалидируй/перезагрузи его.
+- Если command не влияет на данные экрана, он не обязан ничего сохранять локально.
+
+Для одноразовых операций с payload:
+
+- Возвращай `Result<T>`, если payload нужен component прямо сейчас и не является screen source of truth.
+- Ошибки оставляй в `Result`, а UI mapping делай в presentation через `Throwable.toUiError()`.
+
 ## Method Rules
 
-- Метод repository должен описывать data operation на языке фичи: `getProfile`, `observeProfile`, `updateProfile`, `refreshProfile`.
-- Для одноразового чтения используй `suspend fun`.
-- Для наблюдения используй `fun observe*(): Flow<Resource<T>>` или `Flow<T>`, если errors невозможны или уже обработаны выше.
-- Для команды записи используй `suspend fun` и возвращай `Resource<Unit>` или `Resource<DomainModel>`, если результат нужен вызывающему коду.
+- Метод repository должен описывать data operation на языке фичи: `observeProfile`, `refreshProfile`, `updateProfile`, `deleteProfile`.
+- Для наблюдения используй `fun observe*(): Flow<T?>` или `Flow<List<T>?>`.
+- Для remote sync экранных данных используй `suspend fun refresh*(): ResultStatus`.
+- Для command без payload используй `suspend fun update*(): ResultStatus`, `delete*(): ResultStatus`, `create*(): ResultStatus`.
+- Для one-shot payload используй `suspend fun get*(): Result<T>`, только если этот payload не является screen source of truth.
 - При вызове любого метода `RemoteDataSource` из repository оборачивай remote-вызов в `fetch { ... }` из `base/network`.
 - Не делай в одном методе несколько независимых сценариев. Если метод и читает профиль, и обновляет настройки, и отправляет аналитику, сценарий должен быть разделен.
 
-## Network Fetch Rules
+## Network Fetch And Result Rules
 
 `fetch` из `com.tastyhome.base.network.fetch` применяется на repository уровне при вызове `RemoteDataSource`.
 
 - `RemoteDataSource` отвечает только за один HTTP-запрос и возвращает сериализованный body/response.
 - Repository вызывает remote метод через `fetch { remoteDataSource.someMethod(...) }`.
 - `fetch` нормализует Ktor/network exceptions в project data errors.
-- Если метод repository возвращает `Resource<T>`, оборачивай `fetch` в `runCatchingResource { ... }`.
+- Remote sync методы оборачивай в `runForResult { ... }.status()`.
+- One-shot payload методы оборачивай в `runForResult { ... }`.
+- `runForResult` должен охватывать и network/mapping, и локальное сохранение, чтобы ошибка записи в БД/хранилище стала ошибкой операции.
 - Не вызывай `RemoteDataSource` напрямую из repository без `fetch`.
 - Не размещай `fetch` внутри `RemoteDataSource`, чтобы remote слой оставался тонкой оберткой над HTTP-запросом.
+
+### runForResult Return Rule
+
+Для remote sync списка `runForResult` должен возвращать именно список, полученный из сети и прошедший domain/data mapping.
+
+Локальное сохранение является side effect внутри block:
+
+- если сохранение успешно, результат операции определяется возвращенным списком;
+- если сохранение падает, exception влияет на результат и превращает операцию в ошибку;
+- block не должен возвращать `Unit` от save-операции, иначе empty-list validation не сможет проверить payload.
+
+Правильно:
+
+```kotlin
+suspend fun refreshRecipes(): ResultStatus {
+    return runForResult {
+        val response = fetch { remoteDataSource.getRecipes() }
+        val recipes = recipeMapper.toDomain(response)
+        localDataSource.replaceRecipes(recipeMapper.toEntities(recipes))
+        recipes
+    }.status()
+}
+```
+
+Неправильно:
+
+```kotlin
+suspend fun refreshRecipes(): ResultStatus {
+    return runForResult {
+        val response = fetch { remoteDataSource.getRecipes() }
+        localDataSource.replaceRecipes(
+            recipeMapper.toEntities(recipeMapper.toDomain(response))
+        )
+    }.status()
+}
+```
+
+Этот пример неправильный, потому что block возвращает результат сохранения, а не список из сети. Empty payload может стать успешной операцией, если save вернул `Unit`.
 
 ## Mapping Rules
 
@@ -70,219 +144,96 @@ data/
 - Request body DTO создается в repository или data mapper из domain input/command args.
 - Presentation модели создаются только в presentation mapper'ах, не в repository.
 
-## Resource Rules
-
-`Resource<T>` используется как domain/data результат операции:
-
-- `Resource.Success(value)` означает успешное получение или изменение данных.
-- `Resource.Error(error, value = cachedValue)` означает ошибку, при которой можно опционально сохранить последнее известное значение.
-- `Resource.Error(error)` без value используется, когда fallback данных нет.
-- `runCatchingResource { ... }` используй для простого оборачивания операции, которая может бросить исключение и возвращает nullable result.
-- `CancellationException` не нужно проглатывать: `runCatchingResource` уже пробрасывает cancellation дальше.
-- `Resource.map { ... }` используй для преобразования значения без потери error состояния.
-- `Flow<Resource<T>>.mapResource { ... }` используй для преобразования flow с сохранением `Success/Error`.
-
-Repository должен возвращать `Resource<DomainModel>`, а не `Result`, nullable domain model или DTO, если в фиче нужно передавать ошибку наверх.
-
-## ResourceHolder Rules
-
-`ResourceHolder<T>` и `LocalResourceHolder<T>` используются, когда repository должен хранить последнее состояние ресурса и отдавать его как `Flow<Resource<T>>`.
-
-Holder'ы являются локальной деталью repository. Они не создаются в `ProfileGraph`, не описываются в `InternalBindings`, не передаются через `ParentDependencies` и не инжектятся в constructor repository.
-
-Даже если сам repository создается через Metro, holder остается обычным private field внутри repository.
-
-Используй `LocalResourceHolder<T>`, когда:
-
-- фиче нужен in-memory cache для одного ресурса;
-- нет отдельного persistent `CacheHolder`;
-- данные живут только в рамках конкретного instance repository.
-
-Используй `ResourceHolder<T>`, когда:
-
-- есть отдельный `CacheHolder<T?>`, связанный с локальным источником данных;
-- нужно совместить локальные cached data и последнее error состояние;
-- repository наблюдает cache как `Flow<Resource<T>>`.
-
-Для offline-first и single-source-of-truth сценариев с observable локальным хранилищем (`Room`, `DataStore`, другой persistent source) по умолчанию предпочитай `ResourceHolder<T>` c `CacheHolder`, оборачивающим локальный источник данных.
-
-Если UI должен одновременно:
-
-- читать данные из локального SSOT-источника;
-- переживать refresh из сети;
-- сохранять старые данные при ошибке refresh;
-- получать `Resource.Error(error, cachedValue)` поверх уже сохраненных данных,
-
-то не обходи `ResourceHolder` прямым `observeLocal().mapResource { ... }`, если из-за этого error/loading orchestration придется переносить в presentation/component слой.
-
-В таких случаях repository должен:
-
-- собирать `CacheHolder` поверх local source (`observe` читает из БД/хранилища, `update` пишет туда же);
-- держать `ResourceHolder` как private field;
-- наружу отдавать `resourceHolder.observe()`;
-- после refresh/update операции вызывать `resourceHolder.update(resource)`.
-
-Если для `ResourceHolder` нужен `CacheHolder`, собирай `CacheHolder` локально в repository из уже существующего local source. Не выноси `CacheHolder`/`ResourceHolder` в DI graph.
-
-Правило завершения refresh для offline-first SSOT:
-
-- Если repository делает `remote -> save to local SSOT` и вызывающий код использует завершение `refresh*()` для управления loading lifecycle, то успешный `refresh*()` не должен завершаться сразу после успешного network ответа.
-- После `Resource.Success` от remote-части repository должен дождаться подтвержденного `Success` от локального observable source после записи в БД/хранилище.
-- Это правило нужно, чтобы presentation/component слой не ловил промежуточное состояние между `remote success` и `local success` и не был вынужден самостоятельно оркестрировать ожидание локального SSOT.
-- Допустимо дожидаться первого `Success` от локального источника, даже если это временно оставляет на экране stale data чуть дольше, если такой UX tradeoff принят в проекте.
-- Если сценарию нужна строгая гарантия именно свежего snapshot, repository должен ждать не просто `any Success`, а подтверждение конкретной новой версии данных.
-
-Update strategy:
-
-- `DefaultResourceUpdateStrategy.Straight` сохраняет новый `Resource` как есть.
-- `DefaultResourceUpdateStrategy.DataStoresOnError` используется как стратегия по умолчанию для `ResourceHolder` и предназначена для сценариев, где error state может сопровождаться сохраненными данными.
-
-Правила применения holder'ов:
-
-- Holder создается внутри repository как `private val`.
-- Holder не передается в constructor repository.
-- Holder не инжектится через Metro.
-- Holder не создается в `InternalBindings`, `AppBindings` или любом другом DI binding container.
-- Holder не передается через `ParentDependencies`.
-- Наружу отдавай `holder.observe()`, а не сам holder.
-- Обновляй holder после remote/local операции через `holder.update(resource)`.
-- Не обновляй holder из presentation слоя.
-- Не используй holder вместо persistent storage, если данные должны переживать перезапуск приложения.
-- Не используй holder для независимых ресурсов вперемешку. Один holder хранит один тип ресурса.
-
-Неправильно:
-
-```kotlin
-internal class ProfileRepository(
-    private val remoteDataSource: ProfileRemoteDataSource,
-    private val mapper: ProfileMapper,
-    private val profileHolder: LocalResourceHolder<Profile>,
-)
-```
-
-```kotlin
-@BindingContainer
-internal abstract class ProfileInternalBindings {
-    companion object {
-        @Provides
-        internal fun profileHolder(): LocalResourceHolder<Profile> {
-            return LocalResourceHolder()
-        }
-    }
-}
-```
-
-Эти примеры неправильные, потому что holder становится частью DI graph. Holder должен оставаться private implementation detail конкретного repository.
-
 ## Error Handling Rules
 
-- Repository ловит technical/data ошибки и превращает их в `Resource.Error`.
+- Repository ловит technical/data ошибки через `runForResult`.
 - Repository не превращает ошибки в UI text. UI error mapping выполняется в presentation слое.
 - Repository не должен скрывать ошибку пустой domain моделью, если это не явное бизнес-правило.
-- Если при ошибке есть cached value, возвращай `Resource.Error(error, cachedValue)`.
-- Если данных нет, возвращай `Resource.Error(error)` или `Resource.Error(emptyDataError())`, когда ошибка именно в отсутствии данных.
+- Если данных нет, используй project data error вроде `emptyDataError()`, когда ошибка именно в отсутствии данных.
+- `CancellationException` не нужно проглатывать: `runForResult` пробрасывает cancellation дальше.
 
-## Correct Example: Remote Read
-
-```kotlin
-internal class ProfileRepository(
-    private val remoteDataSource: ProfileRemoteDataSource,
-    private val mapper: ProfileMapper,
-) {
-    suspend fun getProfile(profileId: ProfileId): Resource<Profile> {
-        return runCatchingResource {
-            val dto = fetch { remoteDataSource.getProfile(profileId.value) }
-            mapper.toDomain(dto)
-        }
-    }
-}
-```
-
-## Correct Example: Observe Cached Resource
-
-```kotlin
-internal class ProfileRepository(
-    private val remoteDataSource: ProfileRemoteDataSource,
-    private val mapper: ProfileMapper,
-) {
-    // Local repository state, not a DI dependency.
-    private val profileHolder = LocalResourceHolder<Profile>()
-
-    fun observeProfile(): Flow<Resource<Profile>> {
-        return profileHolder.observe()
-    }
-
-    suspend fun refreshProfile(profileId: ProfileId): Resource<Profile> {
-        val resource = runCatchingResource {
-            val dto = fetch { remoteDataSource.getProfile(profileId.value) }
-            mapper.toDomain(dto)
-        }
-        profileHolder.update(resource)
-        return resource
-    }
-}
-```
-
-## Correct Example: Mapping Resource Flow
-
-```kotlin
-internal class ProfileRepository(
-    private val localDataSource: ProfileLocalDataSource,
-    private val mapper: ProfileMapper,
-) {
-    fun observeProfile(): Flow<Resource<Profile>> {
-        return localDataSource.observeProfileEntity()
-            .mapResource { entity -> mapper.toDomain(entity) }
-    }
-}
-```
-
-## Correct Example: Offline-First SSOT With Database Cache
+## Correct Example: Observable Screen Data
 
 ```kotlin
 internal class RecipesRepository(
-    private val remoteDataSource: RecipesRemoteDataSource,
-    private val localDataSource: RecipesLocalDataSource,
-    private val entityMapper: RecipeEntityMapper,
-    private val dtoMapper: RecipeDTOMapper,
+    private val localDataSource: RecipeLocalDataSource,
+    private val remoteDataSource: RecipeRemoteDataSource,
+    private val recipeMapper: RecipeMapper,
 ) {
-    private val recipesHolder = ResourceHolder(
-        cacheHolder = CacheHolder(
-            observe = {
-                localDataSource.observeRecipes()
-                    .map { entities -> entities?.map(entityMapper::toDomain) }
-            },
-            update = { recipes ->
-                localDataSource.saveRecipes(
-                    recipes.mapIndexed { index, recipe ->
-                        dtoMapper.toEntity(recipe, index)
-                    }
-                )
-            }
-        )
-    )
-
-    fun observeRecipes(): Flow<Resource<List<Recipe>>> {
-        return recipesHolder.observe()
+    fun observeRecipes(): Flow<List<Recipe>?> {
+        return localDataSource.observeRecipes()
+            .map { entities -> entities?.let(recipeMapper::toDomain) }
     }
 
-    suspend fun refreshRecipes(): Resource<List<Recipe>> {
-        val resource = runCatchingResource {
-            val dto = fetch { remoteDataSource.getRecipes() }
-            dto.map(dtoMapper::toDomain)
-        }
-        recipesHolder.update(resource)
-        if (resource is Resource.Success) {
-            recipesHolder.observe().firstOrNull { it is Resource.Success }
-        }
-        return resource
+    suspend fun refreshRecipes(): ResultStatus {
+        return runForResult {
+            val response = fetch { remoteDataSource.getRecipes() }
+            val recipes = recipeMapper.toDomain(response)
+            localDataSource.replaceRecipes(recipeMapper.toEntities(recipes))
+            recipes
+        }.status()
     }
 }
 ```
 
-Этот паттерн предпочтителен для offline-first фич, где локальная БД является SSOT, а repository должен сохранить refresh error рядом с уже имеющимися cached data и завершать refresh только после возврата локального `Success`.
+Этот пример правильный, потому что экранные данные читаются только из локального observable source, а remote request возвращает только статус синхронизации.
 
-## Incorrect Example
+## Correct Example: Command Without Payload
+
+```kotlin
+internal class ProfileRepository(
+    private val remoteDataSource: ProfileRemoteDataSource,
+    private val localDataSource: ProfileLocalDataSource,
+) {
+    suspend fun deleteProfile(profileId: ProfileId): ResultStatus {
+        return runForResult {
+            fetch { remoteDataSource.deleteProfile(profileId.value) }
+            localDataSource.deleteProfile(profileId.value)
+            true
+        }.status()
+    }
+}
+```
+
+Этот пример правильный, потому что операция не возвращает отображаемые данные, но после успешного remote command обновляет локальный source, который питает экран.
+
+## Correct Example: One-Shot Payload
+
+```kotlin
+internal class InviteRepository(
+    private val remoteDataSource: InviteRemoteDataSource,
+    private val mapper: InviteMapper,
+) {
+    suspend fun createInviteLink(profileId: ProfileId): Result<InviteLink> {
+        return runForResult {
+            val dto = fetch { remoteDataSource.createInviteLink(profileId.value) }
+            mapper.toDomain(dto)
+        }
+    }
+}
+```
+
+Этот пример правильный, если invite link нужен как одноразовый payload для dialog/share flow и не является screen source of truth.
+
+## Incorrect Example: Returning Network Data For Screen State
+
+```kotlin
+internal class RecipesRepository(
+    private val remoteDataSource: RecipeRemoteDataSource,
+    private val recipeMapper: RecipeMapper,
+) {
+    suspend fun refreshRecipes(): Result<List<Recipe>> {
+        return runForResult {
+            val response = fetch { remoteDataSource.getRecipes() }
+            recipeMapper.toDomain(response)
+        }
+    }
+}
+```
+
+Этот пример неправильный для экранных данных, потому что UI начнет зависеть от network payload вместо единого observable local source.
+
+## Incorrect Example: Presentation Leakage
 
 ```kotlin
 internal class ProfileRepository(

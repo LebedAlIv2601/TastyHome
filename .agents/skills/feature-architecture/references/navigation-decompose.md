@@ -197,7 +197,7 @@ internal class ProfileDetailsComponent(
 - Screen component не должен знать о `StackNavigation` parent component. Он вызывает методы `router`.
 - Component не содержит `@Composable View` и не наследуется от `Feature`.
 - Screen/content composable вызывается из `Feature { }` в public factory или internal screen factory.
-- Подробные правила state/event, `Resource -> UiState`, `UiError` и Compose connector см. в `presentation-layer.md`.
+- Подробные правила state/event, `ResultStatus + local data -> UiState`, `UiError` и Compose connector см. в `presentation-layer.md`.
 
 ## Parent Flow Component
 
@@ -348,7 +348,7 @@ internal sealed interface ProfileConfig {
 
 - Все config variants должны быть `@Serializable`.
 - В config клади только стабильные navigation args: id, enum, primitive/string value, lightweight public args.
-- Не клади в config callbacks, component instances, repositories, use cases, `StateFlow`, `Resource`, `UiState`, DTO/entity/presentation models или platform objects.
+- Не клади в config callbacks, component instances, repositories, use cases, `StateFlow`, `ResultStatus`, `UiState`, DTO/entity/presentation models или platform objects.
 - Если экрану нужен большой объект, передавай id в config, а данные получай через use case/repository.
 - Config живет в impl модуле, потому что это внутренняя структура flow.
 

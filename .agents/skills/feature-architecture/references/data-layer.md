@@ -19,4 +19,4 @@
 
 ## Repository Rules
 
-Подробные правила написания repository, применения `Resource<T>` и локального применения `ResourceHolder` внутри repository лежат в `references/repositories.md`.
+Подробные правила написания repository, применения `ResultStatus`, `Result<T>`, observable local source и `runForResult` лежат в `references/repositories.md`.

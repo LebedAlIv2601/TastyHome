@@ -478,5 +478,5 @@ internal object ProfileInternalBindings {
 - Internal screen `*AppBindings` не подключаются в `shared`; они подключаются в root graph фичи.
 - Feature factory binding находится в `ProfileAppBindings`.
 - DataStore и другие app-wide singletons создаются в `ProfileAppBindings`.
-- ResourceHolder и LocalResourceHolder не создаются в DI graph, а локально внутри repository.
+- Local observable state holders не создаются в DI graph без необходимости; для screen data предпочитай repository + local source + use case contracts.
 - Components и screen state не являются app singletons.

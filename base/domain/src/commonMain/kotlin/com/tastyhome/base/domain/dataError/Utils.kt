@@ -18,3 +18,7 @@ fun emptyDataError(): DataError {
         cause = null
     )
 }
+
+fun Throwable.isEmptyDataError(): Boolean {
+    return (this as? DataError)?.code == EMPTY_DATA_ERROR_CODE
+}

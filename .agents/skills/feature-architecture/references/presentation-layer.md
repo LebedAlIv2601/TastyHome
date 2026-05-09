@@ -4,13 +4,13 @@
 
 Presentation layer отвечает за экранное поведение фичи:
 
-- получает данные из domain/usecase слоя;
-- преобразует domain `Resource<T>` в `UiState<PresentationModel>`;
+- получает observable domain data и statuses из domain/usecase слоя;
+- преобразует локальные данные, loading flag и `ResultStatus` в `UiState<PresentationModel>`;
 - хранит единое состояние экрана в Decompose component;
 - принимает пользовательские намерения из Compose UI через единый event-entrypoint;
 - отрисовывает UI через Compose без доступа к data/domain implementation details.
 
-Presentation слой не должен протаскивать в UI DTO, Entity, Repository, `Resource<T>`, `DataError` или `Throwable`. До composable должны доходить только `State`, `Event`, presentation models, `UiState<T>` и `UiError`.
+Presentation слой не должен протаскивать в UI DTO, Entity, Repository, `DataError` или `Throwable`. До composable должны доходить только `State`, `Event`, presentation models, `UiState<T>` и `UiError`.
 
 ## Structure
 
@@ -66,11 +66,10 @@ internal data class ProfileModel(
 - Все presentation models, которые используются в UI, должны быть помечены Compose-аннотацией `@Immutable`.
 - Если другая модель presentation-слоя напрямую передается в composable или лежит внутри `UiState<...>` для composable, она тоже должна быть помечена `@Immutable`.
 - Модели должны быть `internal`, если нет явной причины расширять видимость.
-- Модели не должны содержать DTO, Entity, `Resource`, `UiState`, `Throwable`, `DataError`, `CoroutineScope`, Decompose или Compose component types.
+- Модели не должны содержать DTO, Entity, `UiState`, `Throwable`, `DataError`, `CoroutineScope`, Decompose или Compose component types.
 - В модель можно класть UI-ready поля: отформатированные строки, флаги доступности actions, сгруппированные элементы списка.
 - Не клади в presentation model callbacks и mutable state. Действия идут через `Event`.
 - Если domain model уже идеально подходит экрану и не протекает через public API, отдельная presentation model не обязательна. Но как только появляются форматирование, группировка, UI flags или несколько domain-моделей, создавай `*Model`.
-- Не считай отсутствие `@Immutable` допустимым только потому, что модель "маленькая", "очевидно immutable" или "временная": для UI-facing presentation моделей это обязательное правило проекта.
 
 ## Model Mappers
 
@@ -107,24 +106,15 @@ Component взаимодействует с UI через два публичн�
 - единый `StateFlow<ScreenState>` с полным состоянием экрана;
 - единый метод `onUIEvent(event)` для всех событий от UI.
 
-Публичное имя этого `StateFlow` по умолчанию должно быть `state`, а не `stateFlow`.
-
 ```kotlin
-internal data class ProfileState(
-    val profile: UiState<ProfileModel> = UiState.Loading(),
-    val isRefreshing: Boolean = false,
-    val query: String = "",
-    val selectedTab: ProfileTab = ProfileTab.Info,
+internal data class RecipesState(
+    val recipes: UiState<List<RecipeModel>> = UiState.Loading(),
 )
 ```
 
 ```kotlin
-internal sealed interface ProfileEvent {
-    data object BackClicked : ProfileEvent
-    data object RetryClicked : ProfileEvent
-    data object RefreshTriggered : ProfileEvent
-    data class SearchQueryChanged(val query: String) : ProfileEvent
-    data class TabSelected(val tab: ProfileTab) : ProfileEvent
+internal sealed interface RecipesEvent {
+    data object RetryClicked : RecipesEvent
 }
 ```
 
@@ -132,14 +122,14 @@ internal sealed interface ProfileEvent {
 
 - State лежит рядом с component в `component/` и называется `*State`.
 - State должен быть одним `data class` на component.
-- State содержит все, что нужно экрану для стабильной отрисовки: данные, loading/error через `UiState`, input values, selected ids/tabs, dialog flags, validation flags.
+- State содержит все, что нужно экрану для стабильной отрисовки: данные через `UiState`, input values, selected ids/tabs, dialog flags, validation flags.
 - State должен иметь безопасные default values, чтобы UI мог отрисоваться до первой загрузки.
-- Для данных, пришедших из domain/usecase, используй `UiState<PresentationModel>` или `UiState<List<PresentationModel>>`.
+- Для экранных данных используй `UiState<PresentationModel>` или `UiState<List<PresentationModel>>`.
 - Итоговый `state` должен собираться реактивно из нескольких input-flow через `combine(...).stateIn(...)`.
 - `MutableStateFlow` внутри component допустим только как private input-flow для сборки state, а не как вручную поддерживаемый полный `ScreenState`.
 - Сам `state` нельзя менять руками через `_stateFlow.update { ... }`; меняются только входные flow, из которых этот state собран.
 - Не дроби состояние на несколько публичных flow. Если UI должен знать значение, оно должно попасть в единый `ScreenState`.
-- Не клади в state `Resource`, `Throwable`, `DataError`, use cases, repositories, mutable collections или callbacks.
+- Не клади в state `Throwable`, `DataError`, use cases, repositories, mutable collections или callbacks.
 
 Правила для events:
 
@@ -151,104 +141,76 @@ internal sealed interface ProfileEvent {
 - Для кликов/action без payload используй `data object`.
 - Не создавай отдельные методы component вроде `onBackClick`, `onRetryClick`, `onNameChanged`. Все события идут через `onUIEvent(event)`.
 
-## Component Contract
+## Screen Data State Pattern
 
-Screen component является presentation controller: управляет lifecycle, вызывает use cases, маппит результаты, обновляет state и дергает router/callbacks. Он не содержит Compose UI.
+Для данных, которые отображаются на экране, component собирает `UiState` из трех источников:
 
-```kotlin
-@AssistedInject
-internal class ProfileComponent(
-    @Assisted componentContext: ComponentContext,
-    @Assisted private val router: ProfileRouter,
-    private val observeProfileUseCase: ObserveProfileUseCase,
-    private val refreshProfileUseCase: RefreshProfileUseCase,
-    private val profileModelMapper: ProfileModelMapper,
-) : BaseComponent<ProfileRouter>(
-    router = router,
-    componentContext = componentContext,
-) {
-
-    val state: StateFlow<ProfileState>
-
-    fun onUIEvent(event: ProfileEvent)
-
-    @AssistedFactory
-    fun interface Factory {
-        fun create(
-            componentContext: ComponentContext,
-            router: ProfileRouter,
-        ): ProfileComponent
-    }
-}
+```text
+observable local data + UI loading flag + last query ResultStatus -> UiState
 ```
 
+Правила:
+
+- `observe*UseCase()` возвращает локальные observable domain данные: `Flow<T?>`, `Flow<List<T>?>` или другой flow без UI-моделей.
+- `refresh*UseCase()` возвращает `ResultStatus`.
+- Component хранит private `MutableStateFlow<Boolean>` для transient loading.
+- Component хранит private `MutableStateFlow<ResultStatus>` или nullable status flow для последнего результата запроса.
+- `createUiState(data, isLoading, status, mapper = ...)` вызывается в component/presentation layer.
+- Initial state должен быть `UiState.Loading()`, а не error flicker до первого request.
+- Loading flag остается UI-логикой component и не переносится в repository/use case только ради loader.
+
+## Component Contract
+
+Screen component является presentation controller: управляет lifecycle, вызывает use cases, маппит результаты, обновляет input-flow и дергает router/callbacks. Он не содержит Compose UI.
+
 ```kotlin
 @AssistedInject
-internal class ProfileComponent(
+internal class RecipesComponent(
     @Assisted componentContext: ComponentContext,
-    @Assisted private val router: ProfileRouter,
-    private val observeProfileUseCase: ObserveProfileUseCase,
-    private val refreshProfileUseCase: RefreshProfileUseCase,
-    private val profileModelMapper: ProfileModelMapper,
-) : BaseComponent<ProfileRouter>(
-    router = router,
+    private val observeRecipesUseCase: ObserveRecipesUseCase,
+    private val refreshRecipesUseCase: RefreshRecipesUseCase,
+    private val recipeModelMapper: RecipeModelMapper,
+) : BaseComponent<Router>(
+    router = Router { },
     componentContext = componentContext,
 ) {
-
-    @AssistedFactory
-    fun interface Factory {
-        fun create(
-            componentContext: ComponentContext,
-            router: ProfileRouter,
-        ): ProfileComponent
-    }
-
-    private val isRefreshingFlow = MutableStateFlow(false)
-    private val selectedTabFlow = MutableStateFlow(ProfileTab.Info)
-
-    private val profileFlow = combine(
-        observeProfileUseCase(),
-        isRefreshingFlow,
-    ) { resource, isRefreshing ->
-        resource.toUiState(
-            isLoading = isRefreshing,
-            mapper = profileModelMapper::map,
-        )
-    }
-
-    val state: StateFlow<ProfileState> = combine(
-        profileFlow,
-        isRefreshingFlow,
-        flowOf(""),
-        selectedTabFlow,
-        ::ProfileState,
-    ).stateIn(
-        scope = scope,
-        started = SharingStarted.WhileSubscribed(),
-        initialValue = ProfileState(),
+    private val loadingFlow = MutableStateFlow(false)
+    private val queryStatusFlow = MutableStateFlow<ResultStatus>(
+        ResultStatus.Error(emptyDataError())
     )
 
-    override fun onCreate() {
-        super.onCreate()
-        refreshProfile()
-    }
-
-    fun onUIEvent(event: ProfileEvent) {
-        when (event) {
-            ProfileEvent.BackClicked -> router.goBack()
-            ProfileEvent.RefreshTriggered -> refreshProfile()
-            ProfileEvent.RetryClicked -> refreshProfile()
-            is ProfileEvent.SearchQueryChanged -> { /* update query flow */ }
-            is ProfileEvent.TabSelected -> selectedTabFlow.value = event.tab
+    private val recipesUiFlow = combine(
+        observeRecipesUseCase(),
+        loadingFlow,
+        queryStatusFlow,
+    ) { recipes, loading, status ->
+        createUiState(recipes, loading, status) { items ->
+            items.map(recipeModelMapper::map)
         }
     }
 
-    private fun refreshProfile() {
-        isRefreshingFlow.value = true
-        scope.launch {
-            refreshProfileUseCase()
-        }.invokeOnCompletion {
-            isRefreshingFlow.value = false
+    val state: StateFlow<RecipesState> = recipesUiFlow
+        .map(::RecipesState)
+        .stateIn(
+            scope = scope,
+            started = SharingStarted.WhileSubscribed(),
+            initialValue = RecipesState(),
+        )
+
+    override fun onCreate() {
+        super.onCreate()
+        refresh()
+    }
+
+    fun onUIEvent(event: RecipesEvent) {
+        when (event) {
+            RecipesEvent.RetryClicked -> refresh()
+        }
+    }
+
+    private fun refresh() {
+        scope.doWithLoading(loadingFlow) {
+            queryStatusFlow.update { refreshRecipesUseCase() }
         }
     }
 }
@@ -259,163 +221,51 @@ internal class ProfileComponent(
 - Runtime параметры component помечай `@Assisted`: `ComponentContext`, args/config fields, router/callbacks.
 - DI зависимости передавай обычными constructor параметрами.
 - По умолчанию не создавай отдельную пару `interface + Default...Component`. Для screen component используй один concrete класс `*Component`.
-- Отдельный interface для component допустим только если внутри impl модуля действительно нужны несколько реализаций одного и того же component contract.
 - Публично expose только `StateFlow`, не `MutableStateFlow`.
-- Публичное свойство состояния называй `state`. Не используй имя `stateFlow`, если нет очень сильной причины.
+- Публичное свойство состояния называй `state`.
 - Собирай итоговый `state` реактивно через `combine(...).stateIn(...)` из private input-flow и domain/usecase flow.
-- Private `MutableStateFlow` используй только как input-flow для state assembly: например, `isRefreshingFlow`, `searchQueryFlow`, `selectedTabFlow`.
-- Производные части состояния тоже оформляй как private flow (`profileFlow`, `recipesFlow`, `filtersFlow` и т.д.), если они собираются из других flow.
+- Private `MutableStateFlow` используй только как input-flow для state assembly.
 - Не поддерживай основной `ScreenState` вручную через `MutableStateFlow<ScreenState>` и `_stateFlow.update { ... }`.
-- Не смешивай два подхода одновременно: если экранный state собран реактивно, не дописывай его вручную отдельными `_stateFlow.update`.
 - Все UI события обрабатывай в одном `onUIEvent(event)` через exhaustive `when`.
 - Component может вызывать router/callbacks, use cases, mapper'ы и platform abstractions.
 - Component отвечает только за подготовку данных к отображению и реакцию на UI events.
-- Если component поднимает временный UI loading flag перед `scope.launch { ... }`, предпочитай поднимать флаг снаружи launch и сбрасывать его через `job.invokeOnCompletion { ... }`, а не через `try/finally` внутри coroutine body.
-- Callback в `invokeOnCompletion` должен использоваться только для cleanup ephemeral UI state и не должен содержать бизнес-логику, mapping, retry или navigation.
-- Component не должен реализовывать бизнес-логику, cache orchestration, offline-first merge, source-of-truth decisions, retry strategy уровня data/domain или reconciliation данных из нескольких источников.
-- Если component приходится вручную склеивать cached data, error state и loading state для domain-ресурса, сначала проверь, не должна ли эта ответственность находиться в repository/use case.
-- Component не должен компенсировать недостатки repository/use case временными UI fallback-механизмами, если проблема относится к data/domain слою.
-- Component может хранить только UI state и ephemeral UI-only flags; persistent caching и data recovery не являются его ответственностью.
-- Component не должен ловить business/data ошибки из use case или repository, если контракт этих методов уже возвращает `Resource<T>` или другой domain result type. Такие ошибки должны быть упакованы ниже, а component должен работать с результатом, а не с exception-based control flow.
-- `CancellationException` не относится к business/data error handling. Если после отмены coroutine нужен cleanup ephemeral UI state, используй completion handling, предпочтительно `invokeOnCompletion`.
+- Если component поднимает временный UI loading flag перед `scope.launch { ... }`, предпочитай поднимать флаг снаружи launch и сбрасывать его через `job.invokeOnCompletion { ... }` или общий helper вроде `doWithLoading`.
+- Component не должен реализовывать бизнес-логику, persistent caching, source-of-truth decisions, retry strategy уровня data/domain или reconciliation данных из нескольких источников.
 - Component не должен импортировать Compose, UI modifiers, DTO, Entity или concrete data sources.
 - Component не должен реализовывать `Feature`; `Feature` создается в `navigation/`.
 - One-shot effect flow не создавай. Навигацию обрабатывай в component через router/callbacks, а отображаемые сообщения/диалоги моделируй в едином state.
 
-### Correct Example: Reactive State Assembly
+## Result To UiState
+
+Экранные данные приходят из observable local source, а статус последнего request приходит как `ResultStatus`.
+
+Presentation слой преобразует это в `UiState<PresentationModel>` функцией из `base/presentation`:
 
 ```kotlin
-@AssistedInject
-internal class ProfileComponent(
-    @Assisted componentContext: ComponentContext,
-    private val observeProfileUseCase: ObserveProfileUseCase,
-    private val refreshProfileUseCase: RefreshProfileUseCase,
-    private val profileModelMapper: ProfileModelMapper,
-) : BaseComponent<Router>(
-    router = Router { },
-    componentContext = componentContext,
-) {
-    private val isRefreshingFlow = MutableStateFlow(false)
-    private val searchQueryFlow = MutableStateFlow("")
-
-    private val profileFlow = combine(
-        observeProfileUseCase(),
-        isRefreshingFlow,
-    ) { resource, isRefreshing ->
-        resource.toUiState(
-            isLoading = isRefreshing,
-            mapper = profileModelMapper::map,
-        )
-    }
-
-    val state: StateFlow<ProfileState> = combine(
-        profileFlow,
-        searchQueryFlow,
-        flowOf(ProfileTab.Info),
-        ::ProfileState,
-    ).stateIn(
-        scope = scope,
-        started = SharingStarted.WhileSubscribed(),
-        initialValue = ProfileState(),
-    )
-
-    override fun onCreate() {
-        super.onCreate()
-        refreshProfile()
-    }
-
-    fun onUIEvent(event: ProfileEvent) {
-        when (event) {
-            ProfileEvent.RetryClicked -> refreshProfile()
-            is ProfileEvent.SearchQueryChanged -> searchQueryFlow.value = event.query
-            else -> {}
-        }
-    }
-
-    private fun refreshProfile() {
-        isRefreshingFlow.value = true
-        scope.launch {
-            refreshProfileUseCase()
-        }.invokeOnCompletion {
-            isRefreshingFlow.value = false
-        }
-    }
+val uiState = createUiState(
+    data = recipes,
+    isLoading = loading,
+    status = status,
+) { items ->
+    items.map(recipeModelMapper::map)
 }
 ```
 
-Этот пример правильный, потому что итоговый `state` не мутируется вручную, а вычисляется как производная функция от нескольких входных flow. Component меняет только input-flow и запускает side effects, а экранное состояние реактивно пересобирается через `combine`.
+`createUiState(...)`:
 
-### Incorrect Example: Imperative ScreenState Mutation
-
-```kotlin
-@AssistedInject
-internal class ProfileComponent(
-    @Assisted componentContext: ComponentContext,
-    private val refreshProfileUseCase: RefreshProfileUseCase,
-    private val profileModelMapper: ProfileModelMapper,
-) : BaseComponent<Router>(
-    router = Router { },
-    componentContext = componentContext,
-) {
-    private val _stateFlow = MutableStateFlow(ProfileState())
-    val state: StateFlow<ProfileState> = _stateFlow.asStateFlow()
-
-    fun onUIEvent(event: ProfileEvent) {
-        when (event) {
-            is ProfileEvent.SearchQueryChanged -> {
-                _stateFlow.update { it.copy(query = event.query) }
-            }
-
-            ProfileEvent.RetryClicked -> refreshProfile()
-        }
-    }
-
-    private fun refreshProfile() {
-        scope.launch {
-            _stateFlow.update { it.copy(isRefreshing = true) }
-            val resource = refreshProfileUseCase()
-            _stateFlow.update { current ->
-                current.copy(
-                    isRefreshing = false,
-                    profile = resource.toUiState(
-                        isLoading = false,
-                        mapper = profileModelMapper::map,
-                    ),
-                )
-            }
-        }
-    }
-}
-```
-
-Этот пример неправильный, потому что component вручную поддерживает итоговый `ScreenState`, смешивает обработку событий с императивной сборкой состояния и теряет прозрачную реактивную структуру входных данных. Такой подход хуже масштабируется и легче приводит к рассинхрону между частями state.
-
-## Resource To UiState
-
-Domain слой возвращает `Resource<Domain>` или flow таких ресурсов. Presentation слой преобразует его в `UiState<PresentationModel>` функцией из `base/presentation`:
-
-```kotlin
-val uiState: UiState<ProfileModel> = resource.toUiState(
-    isLoading = false,
-    mapper = profileModelMapper::map,
-)
-```
-
-`Resource.toUiState(...)`:
-
-- при `isLoading = true` возвращает `UiState.Loading`, сохраняя `resource.value` как mapped cached model, если он есть;
-- при `Resource.Success` возвращает `UiState.Success(mappedValue)`;
-- при `Resource.Error` возвращает `UiState.Error(errorMapper(error), mappedCachedValue)`;
+- при `isLoading = true` возвращает `UiState.Loading`, сохраняя mapped model, если data уже есть;
+- при успешном status и non-null data возвращает `UiState.Success(mappedValue)`;
+- при error status возвращает `UiState.Error(errorMapper(error), mappedCachedValue)`;
+- при отсутствующих data/status возвращает empty-data UI error;
 - по умолчанию маппит ошибку через `Throwable.toUiError()`.
 
 Правила:
 
-- Не создавай `UiState` вручную для результата usecase, если подходит `Resource.toUiState(...)`.
+- Не создавай `UiState` вручную, если подходит `createUiState(...)`.
 - Передавай в `mapper` domain-to-presentation mapper: `profileModelMapper::map`.
-- Используй cached `model` из предыдущего `UiState`, когда переводишь экран в loading вручную: `UiState.Loading(state.profile.model)`.
 - Если нужно преобразовать уже готовый `UiState<T>` в `UiState<R>`, используй `UiState.map { ... }` из `base/presentation`.
 - Для side effects при смене состояния можно использовать `onLoading`, `onSuccess`, `onError` из `base/presentation`, но они не заменяют state modeling.
-- Не отдавай `Resource<T>` в composable. UI должен работать с `UiState<T>`.
+- Не отдавай `ResultStatus`, `Result<T>`, `Throwable` или data errors в composable.
 
 ## UiError Mapping
 
@@ -440,27 +290,8 @@ fun DataError.toUiError(): UiError
 - `DataError.toUiError()` маппит `INTERNET_CONNECTION_ERROR_CODE` в `NoInternetUiError`, `EMPTY_DATA_ERROR_CODE` в `EmptyDataUiError`, остальные коды в `UnknownUiError`.
 - Expected ошибки data/domain слоя должны приходить как `DataError`, чтобы UI получил понятный `UiError`.
 - Unexpected exception не показывай в UI напрямую; он должен стать `UnknownUiError`, а детали при необходимости логируются отдельно.
-- Если фиче нужны специальные ошибки, добавь feature-specific `UiError` в presentation layer и передай custom `errorMapper` в `Resource.toUiState(...)`.
+- Если фиче нужны специальные ошибки, добавь feature-specific `UiError` в presentation layer и передай custom `errorMapper` в `createUiState(...)`.
 - Composable делает rendering по `UiError`, но не знает про `DataError.code`, exception classes или network implementation.
-
-Пример feature-specific mapping:
-
-```kotlin
-internal class ProfileNotFoundUiError : UiError
-
-private fun Throwable.toProfileUiError(): UiError {
-    return when (this) {
-        is DataError if code == PROFILE_NOT_FOUND_ERROR_CODE -> ProfileNotFoundUiError()
-        else -> toUiError()
-    }
-}
-
-val profileState = resource.toUiState(
-    isLoading = false,
-    errorMapper = { it.toProfileUiError() },
-    mapper = profileModelMapper::map,
-)
-```
 
 ## Composable Rules
 
@@ -527,7 +358,7 @@ internal fun ProfileScreen(
 
 - `fun onRetryClick()` / `fun onBackClick()` / `fun onQueryChanged(value: String)` в component class вместо `onUIEvent(event)`.
 - Несколько публичных `StateFlow` под разные куски экрана.
-- `Resource<T>` или `Throwable` в `*State`.
+- `Throwable` или `DataError` в `*State`.
 - DTO/Entity в presentation model или composable.
 - Mapper, который возвращает `UiState`.
 - Composable, который принимает repository/usecase/component factory.

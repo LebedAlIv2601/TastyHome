@@ -46,7 +46,7 @@ Use case не нужен, если он только проксирует оди
 
 ## Return Rules
 
-- Use case возвращает domain модель, domain value, `Resource<T>`, `Flow<T>` или `Flow<Resource<T>>` в зависимости от существующего паттерна фичи.
+- Use case возвращает domain модель, domain value, `Flow<T?>`, `Flow<List<T>?>`, `ResultStatus` или `Result<T>` в зависимости от сценария фичи.
 - Use case не возвращает DTO, Entity, presentation model, `UiState` или Compose state.
 - Ошибки должны оставаться в domain/data error модели проекта, а не превращаться в текст для UI.
 - UI error mapping выполняется в presentation слое.
@@ -66,7 +66,7 @@ Use case не нужен, если он только проксирует оди
 internal class ObserveProfileUseCase(
     private val repository: ProfileRepository,
 ) {
-    operator fun invoke(profileId: ProfileId): Flow<Resource<Profile>> {
+    operator fun invoke(profileId: ProfileId): Flow<Profile?> {
         return repository.observeProfile(profileId)
     }
 }
@@ -76,7 +76,7 @@ internal class ObserveProfileUseCase(
 internal class UpdateProfileUseCase(
     private val repository: ProfileRepository,
 ) {
-    suspend operator fun invoke(profile: Profile): Resource<Unit> {
+    suspend operator fun invoke(profile: Profile): ResultStatus {
         return repository.updateProfile(profile)
     }
 }
@@ -92,7 +92,7 @@ internal class GetProfileUseCase(
     suspend operator fun invoke(onOpenProfile: () -> Unit): UiState<ProfileModel> {
         val dto = remoteDataSource.getProfile()
         val model = mapper.toModel(dto)
-        return UiState.Data(model)
+        return UiState.Success(model)
     }
 }
 ```

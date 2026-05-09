@@ -33,7 +33,7 @@ domain/
 - Domain слой не зависит от presentation слоя.
 - Domain слой не зависит от DTO, Entity, RemoteDataSource, LocalDataSource, Compose, Decompose или UI-моделей.
 - Из data слоя domain может знать только про `*Repository` классы, если текущая архитектура фичи держит repository в `data/`.
-- Repository возвращает domain модели или `Resource<DomainModel>`, но не DTO, Entity и presentation модели.
+- Repository возвращает observable domain data, `ResultStatus` или `Result<T>`, но не DTO, Entity и presentation модели.
 - Domain модели не должны импортировать data или presentation модели.
 - Use case может зависеть от repository и других use case, если это оправдано сценарием.
 
@@ -57,7 +57,7 @@ domain/
 - use case описывает одно бизнес-действие или один сценарий чтения данных;
 - use case получает зависимости через constructor injection;
 - use case не маппит DTO в UI-модель и не работает напрямую с RemoteDataSource/LocalDataSource;
-- use case возвращает domain модели, `Resource<T>` или `Flow<Resource<T>>`, если это соответствует существующему паттерну фичи.
+- use case возвращает observable domain data, `ResultStatus`, `Result<T>` или domain value, если это соответствует сценарию фичи.
 
 ## Correct Example
 
@@ -75,7 +75,7 @@ domain/
 internal class GetProfileUseCase(
     private val repository: ProfileRepository,
 ) {
-    suspend operator fun invoke(profileId: String): Resource<Profile> {
+    suspend operator fun invoke(profileId: String): Result<Profile> {
         return repository.getProfile(profileId)
     }
 }
