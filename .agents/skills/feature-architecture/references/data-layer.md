@@ -19,4 +19,4 @@
 
 ## Repository Rules
 
-Подробные правила написания repository, применения `ResultStatus`, `Result<T>`, observable local source и `runForResult` лежат в `references/repositories.md`.
+Подробные правила написания repository, применения `ResultStatus`, `Result<T>`, observable local source, data/query state и `runForResult` лежат в `references/repositories.md`.

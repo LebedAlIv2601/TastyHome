@@ -9,6 +9,7 @@ Repository:
 - координирует `RemoteDataSource`, `LocalDataSource` и mapper'ы;
 - скрывает DTO, Entity, DataStore, database и network детали от domain/presentation;
 - для данных экрана отдает observable local source (`Flow<Domain?>`, `Flow<List<Domain>?>`, `Flow<Domain>`);
+- хранит data/query state, который влияет на состав, параметры, сортировку, фильтрацию или другие показатели основных данных;
 - для remote sync/command операций возвращает `ResultStatus`;
 - для одноразовых операций с payload возвращает `Result<T>`;
 - содержит orchestration data-операций, но не содержит UI-логику.
@@ -43,6 +44,47 @@ data/
 - Repository не должен принимать или возвращать DTO/Entity наружу, если метод используется domain слоем.
 - Repository не должен импортировать feature API модели без необходимости. Публичные Args/Callbacks обычно остаются на navigation boundary, а не в data слое.
 
+## State Ownership Rules
+
+Repository владеет состоянием, которое является частью data/query модели фичи:
+
+- примененные фильтры, сортировки, поисковые query и paging/query params;
+- выбранные data-срезы, которые меняют состав observable данных;
+- параметры remote/local data request, cache key или local projection;
+- состояние, которое должно переживать пересоздание component в рамках feature scope;
+- состояние, которое при отдельном требовании к персистентности должно быть перенесено из `MutableStateFlow` в `DataStore`, Room или другой local source.
+
+Такое состояние оформляй доменной моделью и обновляй целиком через repository:
+
+```kotlin
+internal data class RecipeFilters(
+    val maxCookingTimeMinutes: Int? = null,
+    val sort: RecipeSort = RecipeSort.Default,
+)
+```
+
+```kotlin
+private val filtersFlow = MutableStateFlow(RecipeFilters())
+
+fun observeFilters(): Flow<RecipeFilters> = filtersFlow
+
+fun updateFilters(filters: RecipeFilters) {
+    filtersFlow.value = filters
+}
+```
+
+Не дроби update-методы на `updateMaxCookingTime`, `updateSort`, `updateCategory`, если фильтры являются единой доменной query-моделью. Дроби методы только когда это разные бизнес-команды с разными правилами/побочными эффектами.
+
+Repository не должен хранить UI/process state:
+
+- transient loading flag;
+- цвет, enabled/disabled state, expanded/collapsed state, focus, hover;
+- dialog visibility, snackbar text, sheet state;
+- draft-значение UI-контрола, которое еще не применено к data query;
+- navigation state и callbacks.
+
+Такое состояние остается в component.
+
 ## Screen Data Rules
 
 Если данные отображаются на экране, remote response не является источником UI-data напрямую.
@@ -57,6 +99,8 @@ local observable source -> domain Flow -> component createUiState(...)
 Правила:
 
 - Экранные данные наружу отдаются через `observe*(): Flow<Domain?>`, `Flow<List<Domain>?>` или другой observable domain flow из локального источника.
+- Data/query state, который меняет наполнение экранных данных, наружу отдается через `observe*Filters()`, `observe*Query()` или другой observable domain flow из repository.
+- Изменение data/query state выполняется через `update*Filters(filters)`, `update*Query(query)` или другой repository метод, принимающий доменную модель целиком.
 - Remote sync метод (`refresh*`, `sync*`, `load*`) возвращает только `ResultStatus`.
 - Remote sync метод должен записывать успешный результат в локальный source (`Room`, `DataStore`, in-memory `MutableStateFlow` и т.д.).
 - Component собирает `UiState` из observable data, UI loading flag и `ResultStatus` через helper из `base/presentation`.
@@ -80,6 +124,7 @@ local observable source -> domain Flow -> component createUiState(...)
 
 - Метод repository должен описывать data operation на языке фичи: `observeProfile`, `refreshProfile`, `updateProfile`, `deleteProfile`.
 - Для наблюдения используй `fun observe*(): Flow<T?>` или `Flow<List<T>?>`.
+- Для data/query state используй пару `fun observe*Filters(): Flow<DomainFilters>` и `fun update*Filters(filters: DomainFilters)`, либо аналогичные `Query`-методы.
 - Для remote sync экранных данных используй `suspend fun refresh*(): ResultStatus`.
 - Для command без payload используй `suspend fun update*(): ResultStatus`, `delete*(): ResultStatus`, `create*(): ResultStatus`.
 - Для one-shot payload используй `suspend fun get*(): Result<T>`, только если этот payload не является screen source of truth.
@@ -155,14 +200,29 @@ suspend fun refreshRecipes(): ResultStatus {
 ## Correct Example: Observable Screen Data
 
 ```kotlin
+internal data class RecipeFilters(
+    val maxCookingTimeMinutes: Int? = null,
+    val sort: RecipeSort = RecipeSort.Default,
+)
+
 internal class RecipesRepository(
     private val localDataSource: RecipeLocalDataSource,
     private val remoteDataSource: RecipeRemoteDataSource,
     private val recipeMapper: RecipeMapper,
 ) {
+    private val filtersFlow = MutableStateFlow(RecipeFilters())
+
     fun observeRecipes(): Flow<List<Recipe>?> {
         return localDataSource.observeRecipes()
             .map { entities -> entities?.let(recipeMapper::toDomain) }
+    }
+
+    fun observeFilters(): Flow<RecipeFilters> {
+        return filtersFlow
+    }
+
+    fun updateFilters(filters: RecipeFilters) {
+        filtersFlow.value = filters
     }
 
     suspend fun refreshRecipes(): ResultStatus {
@@ -176,7 +236,7 @@ internal class RecipesRepository(
 }
 ```
 
-Этот пример правильный, потому что экранные данные читаются только из локального observable source, а remote request возвращает только статус синхронизации.
+Этот пример правильный, потому что экранные данные читаются только из локального observable source, примененные фильтры хранятся как data/query state repository, а remote request возвращает только статус синхронизации.
 
 ## Correct Example: Command Without Payload
 
@@ -250,3 +310,15 @@ internal class ProfileRepository(
 ```
 
 Этот пример неправильный, потому что repository зависит от presentation mapper'а, возвращает `UiState`, принимает UI callback, маппит DTO напрямую в presentation model и вызывает `RemoteDataSource` без `fetch`.
+
+## Incorrect Example: UI State In Repository
+
+```kotlin
+internal class RecipesRepository {
+    private val loadingFlow = MutableStateFlow(false)
+    private val isFilterSheetOpenFlow = MutableStateFlow(false)
+    private val sliderDraftValueFlow = MutableStateFlow(30)
+}
+```
+
+Этот пример неправильный, потому что loading, sheet visibility и draft-значение контрола являются UI/process state component, а не data/query state repository.

@@ -34,6 +34,7 @@ domain/
 - Domain слой не зависит от DTO, Entity, RemoteDataSource, LocalDataSource, Compose, Decompose или UI-моделей.
 - Из data слоя domain может знать только про `*Repository` классы, если текущая архитектура фичи держит repository в `data/`.
 - Repository возвращает observable domain data, `ResultStatus` или `Result<T>`, но не DTO, Entity и presentation модели.
+- Repository хранит data/query state, который влияет на состав основных данных: примененные фильтры, сортировки, search query, paging/query params.
 - Domain модели не должны импортировать data или presentation модели.
 - Use case может зависеть от repository и других use case, если это оправдано сценарием.
 
@@ -56,6 +57,7 @@ domain/
 
 - use case описывает одно бизнес-действие или один сценарий чтения данных;
 - use case получает зависимости через constructor injection;
+- use case всегда stateless: состояние query/data хранится в repository, UI/process state хранится в component;
 - use case не маппит DTO в UI-модель и не работает напрямую с RemoteDataSource/LocalDataSource;
 - use case возвращает observable domain data, `ResultStatus`, `Result<T>` или domain value, если это соответствует сценарию фичи.
 

@@ -14,6 +14,9 @@
 - Keep UI communication to one `StateFlow<*State>` in property `state` and one `onUIEvent(event)` method per component.
 - Map observable domain data + loading flag + `ResultStatus` to presentation `UiState<Model>` in the component/presentation layer.
 - Map `Throwable`/`DataError` to `UiError` before data reaches composable functions.
+- Store applied data/query state that changes main data content in repository as domain models.
+- Store UI/process state in component only.
+- Keep use cases stateless.
 
 ## TODO: Before Finishing
 
@@ -29,11 +32,17 @@
 - Check that internal screen `*FeatureFactory` creates its own screen graph.
 - Check that internal screen `*AppBindings` are included in the root feature graph, not in `shared`.
 - Check that stack animations/shared transitions are configured in composables, not components.
+- Check that applied filters/sorting/search query/paging params that change main data content are domain models stored in repository, or in Room/DataStore if persistence is required.
+- Check that repository exposes data/query state with observe/update methods and does not leak `MutableStateFlow`.
+- Check that repository with in-memory data/query state is scoped with `@SingleIn(<FeatureScope>::class)` or another appropriate scope.
 - Check that each screen component exposes a single immutable `state` `StateFlow`.
 - Check that every UI action goes through `onUIEvent(event)`.
 - Check that state contains `UiState<PresentationModel>` instead of `ResultStatus`, `Result<T>`, `Throwable`, or `DataError`.
 - Check that `state` is assembled reactively from input-flow via `combine(...).stateIn(...)`, not maintained manually as mutable full-screen state.
 - Check that `MutableStateFlow` inside component are only private input-flow for state assembly.
+- Check that component stores only UI/process state: loading, draft inputs, dialog/sheet visibility, selected UI tab, validation and enabled flags.
+- Check that draft UI input is not stored in repository until it becomes applied data/query state.
+- Check that use cases do not own `MutableStateFlow`, cache or query params.
 - Check that ephemeral loading flags around `scope.launch` use the project-preferred completion pattern: set the flag outside launch and reset it in `invokeOnCompletion`, unless there is a documented reason to do otherwise.
 - Check that component does not catch business/data errors from use case or repository methods whose contract already returns `ResultStatus` or `Result<T>`.
 - If component combines observable data, loading flag and query status, check that all three participate in the same reactive state assembly.
@@ -56,6 +65,10 @@
 - Did domain depend on presentation?
 - Did repository return DTO, Entity, presentation model, or `UiState` outside the data layer?
 - Did repository return network payload directly for screen data instead of saving it to local source and exposing observable local data?
+- Did applied filters/sorting/search query/paging params end up in component or use case instead of repository?
+- Did repository store loading, dialog/sheet visibility, enabled flags, colors, focus or draft UI control values?
+- Did a stateful repository miss feature/screen scoping and become multiple independent instances?
+- Did a use case keep its own mutable state?
 - Did refresh return `Unit` from save operation inside `runForResult` instead of returning fetched/mapped payload for validation?
 - Did component keep request status, loading and data outside a single reactive state assembly?
 - Did component implement persistent caching or source-of-truth decisions that belong in repository/local source?

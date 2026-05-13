@@ -197,8 +197,11 @@ Feature scope используется только внутри своего gr
 Feature/screen scope используется для объектов, которые должны быть singleton только внутри одного graph:
 
 - repository с in-memory state;
+- repository, который хранит data/query state через `MutableStateFlow` (`filters`, `query`, paging params и т.д.);
 - coordinator/state holder внутри flow;
 - дорогой объект, который должен переиспользоваться внутри фичи, но не на уровне всего приложения.
+
+Если repository хранит data/query state, он должен быть заскоуплен через `@SingleIn(<FeatureScope>::class)` или другой подходящий scope. Иначе разные use case/component могут получить разные instances repository и разные значения query state.
 
 Не ставь `@SingleIn` на DTO/domain/presentation модели, stateless mapper'ы, простые stateless use case, Decompose components конкретного экрана и factories, которые должны создавать новые instances.
 

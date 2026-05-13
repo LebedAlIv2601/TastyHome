@@ -109,12 +109,16 @@ Component взаимодействует с UI через два публичн�
 ```kotlin
 internal data class RecipesState(
     val recipes: UiState<List<RecipeModel>> = UiState.Loading(),
+    val filters: RecipeFilters = RecipeFilters(),
+    val cookingTimeDraft: Int? = null,
 )
 ```
 
 ```kotlin
 internal sealed interface RecipesEvent {
     data object RetryClicked : RecipesEvent
+    data class CookingTimeChanged(val minutes: Int?) : RecipesEvent
+    data object FiltersApplied : RecipesEvent
 }
 ```
 
@@ -123,6 +127,8 @@ internal sealed interface RecipesEvent {
 - State лежит рядом с component в `component/` и называется `*State`.
 - State должен быть одним `data class` на component.
 - State содержит все, что нужно экрану для стабильной отрисовки: данные через `UiState`, input values, selected ids/tabs, dialog flags, validation flags.
+- State component хранит UI/process state: transient loading, draft input values, dialog/sheet visibility, selected UI tab, validation flags, enabled/disabled flags, one-screen visual state.
+- State component не является владельцем примененного data/query state, который меняет состав основных данных. Такие фильтры, сортировки, search query и paging/query params хранятся в repository и приходят в component через use case flow.
 - State должен иметь безопасные default values, чтобы UI мог отрисоваться до первой загрузки.
 - Для экранных данных используй `UiState<PresentationModel>` или `UiState<List<PresentationModel>>`.
 - Итоговый `state` должен собираться реактивно из нескольких input-flow через `combine(...).stateIn(...)`.
@@ -152,6 +158,10 @@ observable local data + UI loading flag + last query ResultStatus -> UiState
 Правила:
 
 - `observe*UseCase()` возвращает локальные observable domain данные: `Flow<T?>`, `Flow<List<T>?>` или другой flow без UI-моделей.
+- Если на наполнение данных влияют примененные фильтры/query, они хранятся в repository как domain data/query state и участвуют в `observe*UseCase()` или отдельном `observe*FiltersUseCase()`.
+- Component отправляет примененные изменения фильтров целиком через use case вроде `Update*FiltersUseCase(filters)`.
+- Component может хранить draft-значение UI-контрола локально, если оно еще не должно менять data query. После применения draft конвертируется в domain filters/query и отправляется в repository через use case.
+- Если domain filters/query неудобны для UI напрямую, component маппит их в presentation model перед добавлением в `ScreenState`.
 - `refresh*UseCase()` возвращает `ResultStatus`.
 - Component хранит private `MutableStateFlow<Boolean>` для transient loading.
 - Component хранит private `MutableStateFlow<ResultStatus>` или nullable status flow для последнего результата запроса.
@@ -168,6 +178,8 @@ Screen component является presentation controller: управляет li
 internal class RecipesComponent(
     @Assisted componentContext: ComponentContext,
     private val observeRecipesUseCase: ObserveRecipesUseCase,
+    private val observeRecipeFiltersUseCase: ObserveRecipeFiltersUseCase,
+    private val updateRecipeFiltersUseCase: UpdateRecipeFiltersUseCase,
     private val refreshRecipesUseCase: RefreshRecipesUseCase,
     private val recipeModelMapper: RecipeModelMapper,
 ) : BaseComponent<Router>(
@@ -175,9 +187,16 @@ internal class RecipesComponent(
     componentContext = componentContext,
 ) {
     private val loadingFlow = MutableStateFlow(false)
+    private val cookingTimeDraftFlow = MutableStateFlow<Int?>(null)
     private val queryStatusFlow = MutableStateFlow<ResultStatus>(
         ResultStatus.Error(emptyDataError())
     )
+    private val filtersFlow = observeRecipeFiltersUseCase()
+        .stateIn(
+            scope = scope,
+            started = SharingStarted.WhileSubscribed(),
+            initialValue = RecipeFilters(),
+        )
 
     private val recipesUiFlow = combine(
         observeRecipesUseCase(),
@@ -189,8 +208,17 @@ internal class RecipesComponent(
         }
     }
 
-    val state: StateFlow<RecipesState> = recipesUiFlow
-        .map(::RecipesState)
+    val state: StateFlow<RecipesState> = combine(
+        recipesUiFlow,
+        filtersFlow,
+        cookingTimeDraftFlow,
+    ) { recipes, filters, cookingTimeDraft ->
+        RecipesState(
+            recipes = recipes,
+            filters = filters,
+            cookingTimeDraft = cookingTimeDraft,
+        )
+    }
         .stateIn(
             scope = scope,
             started = SharingStarted.WhileSubscribed(),
@@ -205,6 +233,16 @@ internal class RecipesComponent(
     fun onUIEvent(event: RecipesEvent) {
         when (event) {
             RecipesEvent.RetryClicked -> refresh()
+            is RecipesEvent.CookingTimeChanged -> {
+                cookingTimeDraftFlow.value = event.minutes
+            }
+            RecipesEvent.FiltersApplied -> {
+                updateRecipeFiltersUseCase(
+                    filtersFlow.value.copy(
+                        maxCookingTimeMinutes = cookingTimeDraftFlow.value,
+                    )
+                )
+            }
         }
     }
 
@@ -229,6 +267,8 @@ internal class RecipesComponent(
 - Все UI события обрабатывай в одном `onUIEvent(event)` через exhaustive `when`.
 - Component может вызывать router/callbacks, use cases, mapper'ы и platform abstractions.
 - Component отвечает только за подготовку данных к отображению и реакцию на UI events.
+- Component не владеет примененными фильтрами/query, которые меняют данные. Read-only `StateFlow`, полученный из use case через `stateIn`, допустим как локальный snapshot для сборки `ScreenState` и обработки event.
+- Component может хранить draft UI input до применения.
 - Если component поднимает временный UI loading flag перед `scope.launch { ... }`, предпочитай поднимать флаг снаружи launch и сбрасывать его через `job.invokeOnCompletion { ... }` или общий helper вроде `doWithLoading`.
 - Component не должен реализовывать бизнес-логику, persistent caching, source-of-truth decisions, retry strategy уровня data/domain или reconciliation данных из нескольких источников.
 - Component не должен импортировать Compose, UI modifiers, DTO, Entity или concrete data sources.
@@ -358,6 +398,8 @@ internal fun ProfileScreen(
 
 - `fun onRetryClick()` / `fun onBackClick()` / `fun onQueryChanged(value: String)` в component class вместо `onUIEvent(event)`.
 - Несколько публичных `StateFlow` под разные куски экрана.
+- Примененные фильтры, сортировки или search query хранятся в component, хотя они меняют состав основных данных.
+- Draft UI input хранится в repository, хотя он еще не применен к data query.
 - `Throwable` или `DataError` в `*State`.
 - DTO/Entity в presentation model или composable.
 - Mapper, который возвращает `UiState`.

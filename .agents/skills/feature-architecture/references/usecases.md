@@ -14,6 +14,8 @@ Use case нужен, когда:
 
 Use case не нужен, если он только проксирует один метод без добавления смысла, а соседний код фичи не использует такой стиль.
 
+Use case всегда stateless. Он может комбинировать `Flow`, применять бизнес-правила, вызывать repository methods и возвращать результат, но не должен хранить собственный `MutableStateFlow`, cache, query params или UI state.
+
 ## Location
 
 - Use case классы лежат в `domain/usecases/`.
@@ -54,6 +56,9 @@ Use case не нужен, если он только проксирует оди
 ## Behavior Rules
 
 - Use case может содержать бизнес-условия, валидацию, выбор repository метода, комбинирование domain потоков.
+- Use case может комбинировать observable data и data/query state из repository, например список рецептов и примененные фильтры.
+- Use case не хранит состояние между вызовами. Состояние query/data принадлежит repository, UI/process state принадлежит component.
+- Если нужно изменить примененные фильтры/query, use case вызывает repository `update*Filters(filters)`/`update*Query(query)` и не держит текущие значения у себя.
 - Use case не должен выполнять HTTP-запросы напрямую.
 - Use case не должен читать/писать DataStore или базу напрямую.
 - Use case не должен форматировать строки для экрана.
@@ -61,6 +66,31 @@ Use case не нужен, если он только проксирует оди
 - Use case не должен знать про lifecycle компонента.
 
 ## Correct Example
+
+```kotlin
+internal class ObserveRecipesUseCase(
+    private val repository: RecipesRepository,
+) {
+    operator fun invoke(): Flow<List<Recipe>?> {
+        return combine(
+            repository.observeRecipes(),
+            repository.observeFilters(),
+        ) { recipes, filters ->
+            recipes?.filterBy(filters)
+        }
+    }
+}
+```
+
+```kotlin
+internal class UpdateRecipeFiltersUseCase(
+    private val repository: RecipesRepository,
+) {
+    operator fun invoke(filters: RecipeFilters) {
+        repository.updateFilters(filters)
+    }
+}
+```
 
 ```kotlin
 internal class ObserveProfileUseCase(
@@ -98,3 +128,23 @@ internal class GetProfileUseCase(
 ```
 
 Этот пример неправильный, потому что use case зависит от RemoteDataSource и presentation mapper, принимает UI callback и возвращает `UiState<ProfileModel>`.
+
+```kotlin
+internal class ObserveRecipesUseCase(
+    private val repository: RecipesRepository,
+) {
+    private val filtersFlow = MutableStateFlow(RecipeFilters())
+
+    fun updateFilters(filters: RecipeFilters) {
+        filtersFlow.value = filters
+    }
+
+    operator fun invoke(): Flow<List<Recipe>?> {
+        return combine(repository.observeRecipes(), filtersFlow) { recipes, filters ->
+            recipes?.filterBy(filters)
+        }
+    }
+}
+```
+
+Этот пример неправильный, потому что use case хранит собственное состояние. Примененные фильтры являются data/query state и должны храниться в repository.

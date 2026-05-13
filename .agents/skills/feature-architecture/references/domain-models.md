@@ -18,6 +18,7 @@ Domain model отвечает на вопрос "что это значит дл
 
 - Доменная сущность называется без технических суффиксов: `Profile`, `Recipe`, `Ingredient`.
 - Value object называется по смыслу значения: `RecipeId`, `Calories`, `CookingTime`, `Money`.
+- Query/filter модели называются по бизнес-смыслу: `RecipeFilters`, `RecipeQuery`, `CatalogSort`.
 - State-like доменные enum/sealed модели называются по бизнес-смыслу: `ProfileStatus`, `OrderState`.
 - Не используй суффиксы `DTO`, `Entity`, `Model`, `UiModel` для domain моделей.
 - Имя файла должно совпадать с главной декларацией.
@@ -27,6 +28,7 @@ Domain model отвечает на вопрос "что это значит дл
 - Domain модель должна быть удобной для бизнес-логики фичи.
 - Domain модель не обязана повторять структуру API response или database entity.
 - Domain модель не должна подстраиваться под конкретный экран.
+- Примененные фильтры, сортировки, search query и paging/query params, которые меняют состав основных данных, являются domain data/query моделями, а не UI state.
 - Nullable поля допустимы только если отсутствие значения имеет бизнес-смысл.
 - Default values допустимы только если default является бизнес-правилом, а не способом скрыть плохой API response.
 - Сложные примитивы лучше выражать отдельными value objects, если это снижает риск перепутать значения.
